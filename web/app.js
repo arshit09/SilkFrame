@@ -346,6 +346,10 @@ ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 ["dragenter", "dragover"].forEach((name) => {
   ui.drop.addEventListener(name, (event) => {
     event.preventDefault();
+    // Where it came in over the edge, not where it has wandered to since: the
+    // grid starts under that point, and the panel's own children raise a
+    // second dragenter that must not move it.
+    if (ui.drop.dataset.dragging !== "true") enter(event.clientX, event.clientY);
     ui.drop.dataset.dragging = "true";
   });
 });
@@ -369,31 +373,155 @@ window.addEventListener("pywebviewready", async () => {
 
 const canvas = $("dots");
 const context = canvas.getContext("2d");
-const PITCH = 15;
 
-// The wave runs fast until the app has a video in hand, then eases down into
-// slow motion — the thing this tool does, done to its own background. The
-// phase is accumulated rather than derived from the clock, so changing speed
-// bends the motion instead of jumping it.
-const FAST = 0.0055; // ~0.9 wave cycles a second
-const SLOW = 0.0007; // ~8x slower: unmistakably crawling, but never frozen
-const EASE = 320; // milliseconds to fall into slow motion, and to come back out
+// The dots wander the panel at random until a file is held over it, and then
+// sort themselves into a grid and hold it while the job runs - the background
+// doing what the tool does, turning something loose into something even.
+const PITCH = 24;      // roughly the spacing of the formed grid
+const MARGIN = 20;     // keeps the outer rows off the rounded corners
+const SLOWEST = 90;    // pixels a second, adrift
+const FASTEST = 220;
+const TURN = 5;        // radians a second of aimless steering
+const SETTLE = 620;    // milliseconds one dot takes to reach its slot
+const STAGGER = 380;   // milliseconds between the first slot filling and the last
+const RELEASE = 300;   // milliseconds the grid is held once nothing asks for it
 
-let phase = 0;
-let speed = FAST;
+// Out fast, in slow, and a little past the slot before it comes to rest.
+const ease = (t) => 1 + 1.7 * (t - 1) ** 3 + 0.7 * (t - 1) ** 2;
+const random = (low, high) => low + Math.random() * (high - low);
+
+let dots = [];
+let slots = [];
+let formed = false;
+let origin = null;   // where the file crossed the edge, in canvas coordinates
+let since = 0;   // milliseconds since the dots last changed their minds
+let calm = 0;    // milliseconds nothing has asked for the grid
+let clock = 0;
 let last = null;
+let width = 0;
+let height = 0;
+
+function spawn() {
+  const angle = random(0, Math.PI * 2);
+  const pace = random(SLOWEST, FASTEST);
+  return {
+    x: random(0, width), y: random(0, height),
+    vx: Math.cos(angle) * pace, vy: Math.sin(angle) * pace,
+    fx: 0, fy: 0, slot: 0, spark: Math.random(),
+  };
+}
+
+// The grid is rebuilt whenever the panel changes size: even spacing across
+// whatever is left inside the margin, and one dot for each slot, no more.
+function rebuild() {
+  const across = Math.max(width - MARGIN * 2, 0);
+  const down = Math.max(height - MARGIN * 2, 0);
+  const cols = Math.max(2, Math.round(across / PITCH) + 1);
+  const rows = Math.max(2, Math.round(down / PITCH) + 1);
+
+  slots = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      slots.push({
+        x: MARGIN + (across * col) / (cols - 1),
+        y: MARGIN + (down * row) / (rows - 1),
+        delay: 0,   // set when the grid forms: it depends where the file came in
+      });
+    }
+  }
+  while (dots.length > slots.length) dots.pop();
+  while (dots.length < slots.length) dots.push(spawn());
+  if (formed) form();
+}
+
+// Every slot takes the nearest dot still going spare, so the grid comes
+// together out of short moves rather than a mass crossing of the panel.
+function assign() {
+  const taken = dots.map(() => false);
+  slots.forEach((slot, index) => {
+    let best = 0;
+    let least = Infinity;
+    for (let d = 0; d < dots.length; d += 1) {
+      if (taken[d]) continue;
+      const gap = (dots[d].x - slot.x) ** 2 + (dots[d].y - slot.y) ** 2;
+      if (gap < least) { least = gap; best = d; }
+    }
+    taken[best] = true;
+    dots[best].slot = index;
+  });
+}
+
+// The order spreads out from the point the file crossed the edge at, one ring
+// at a time, reaching the far corner of the panel a full stagger later. With no
+// pointer to go by - a job started from the file picker - it opens out of the
+// middle instead.
+function form() {
+  assign();
+  const from = origin || { x: width / 2, y: height / 2 };
+  let far = 1;
+  slots.forEach((slot) => {
+    slot.delay = Math.hypot(slot.x - from.x, slot.y - from.y);
+    far = Math.max(far, slot.delay);
+  });
+  slots.forEach((slot) => { slot.delay = (STAGGER * slot.delay) / far; });
+  dots.forEach((dot) => { dot.fx = dot.x; dot.fy = dot.y; });
+  since = 0;
+}
+
+// The pointer is somewhere in the window; the ripple starts somewhere on the
+// canvas.
+function enter(clientX, clientY) {
+  const box = canvas.getBoundingClientRect();
+  origin = { x: clientX - box.left, y: clientY - box.top };
+}
+
+// Order breaks back into drift from wherever each dot had got to, every one of
+// them heading somewhere new.
+function scatter() {
+  origin = null;
+  dots.forEach((dot) => {
+    const angle = random(0, Math.PI * 2);
+    const pace = random(SLOWEST, FASTEST);
+    dot.vx = Math.cos(angle) * pace;
+    dot.vy = Math.sin(angle) * pace;
+  });
+  since = 0;
+}
+
+function drift(dot, secs) {
+  // A small random turn each frame, so the paths curve about the panel rather
+  // than ruling straight lines across it.
+  const turn = random(-TURN, TURN) * secs;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const vx = dot.vx * cos - dot.vy * sin;
+  const vy = dot.vx * sin + dot.vy * cos;
+  dot.vx = vx;
+  dot.vy = vy;
+  dot.x += vx * secs;
+  dot.y += vy * secs;
+  if (dot.x < 0 || dot.x > width) {          // the panel has edges to bounce off
+    dot.vx = -dot.vx;
+    dot.x = Math.min(Math.max(dot.x, 0), width);
+  }
+  if (dot.y < 0 || dot.y > height) {
+    dot.vy = -dot.vy;
+    dot.y = Math.min(Math.max(dot.y, 0), height);
+  }
+}
 
 function paint(now) {
   const step = last === null ? 0 : Math.min(now - last, 100);
   last = now;
+  clock += step;
+  since += step;
 
-  const slowing = state.busy || ui.drop.dataset.dragging === "true";
-  speed += ((slowing ? SLOW : FAST) - speed) * (1 - Math.exp(-step / EASE));
-  phase += speed * step;
-
+  if (canvas.clientWidth !== width || canvas.clientHeight !== height) {
+    width = canvas.clientWidth;
+    height = canvas.clientHeight;
+    rebuild();
+  }
   const ratio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
   if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
     canvas.width = width * ratio;
     canvas.height = height * ratio;
@@ -401,23 +529,42 @@ function paint(now) {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const reach = height * 0.34;
-
-  for (let x = PITCH / 2; x < width; x += PITCH) {
-    const across = x / width;
-    // The wave gets denser to the right: one frame becomes two.
-    const wave = Math.sin(across * (1.1 + 4.4 * across) * Math.PI * 2 + phase);
-    const crest = height / 2 + wave * height * 0.2;
-    for (let y = PITCH / 2; y < height; y += PITCH) {
-      const near = Math.max(0, 1 - Math.abs(y - crest) / reach);
-      const alpha = 0.04 + 0.30 * near * near * (slowing ? 1 : 0.75);
-      context.globalAlpha = alpha;
-      context.fillStyle = "#f3f3f3";
-      context.beginPath();
-      context.arc(x, y, 1.1, 0, Math.PI * 2);
-      context.fill();
-    }
+  const wanted = state.busy || ui.drop.dataset.dragging === "true";
+  calm = wanted ? 0 : calm + step;
+  // Between the file landing and Python answering that it is busy there is a
+  // frame or two where nothing is asking for the grid; holding the release
+  // back that long keeps one drop from reading as two.
+  if (wanted && !formed) {
+    formed = true;
+    form();
+  } else if (!wanted && formed && calm > RELEASE) {
+    formed = false;
+    scatter();
   }
+
+  const secs = step / 1000;
+  context.fillStyle = "#f3f3f3";
+
+  dots.forEach((dot) => {
+    let settled = 0;
+    if (formed) {
+      const slot = slots[dot.slot];
+      settled = Math.max(0, Math.min((since - slot.delay) / SETTLE, 1));
+      const shift = ease(settled);
+      // Written back, so the drift picks up wherever the grid let go.
+      dot.x = dot.fx + (slot.x - dot.fx) * shift;
+      dot.y = dot.fy + (slot.y - dot.fy) * shift;
+    } else {
+      drift(dot, secs);
+    }
+    // A slow band of light crosses the grid once it is standing still.
+    const band = 0.5 + 0.5 * Math.sin((dot.x / Math.max(width, 1)) * Math.PI * 2 - clock * 0.0011);
+    context.globalAlpha = 0.14 + 0.20 * dot.spark + settled * (0.12 + 0.20 * band);
+    context.beginPath();
+    context.arc(dot.x, dot.y, 1.2, 0, Math.PI * 2);
+    context.fill();
+  });
+
   requestAnimationFrame(paint);
 }
 
