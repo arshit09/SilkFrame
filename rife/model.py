@@ -74,6 +74,32 @@ def fastest_dtype(net, device, modulo=64, runs=6):
     return torch.float16 if timings[torch.float16] < 0.9 * timings[torch.float32] else torch.float32
 
 
+def available_devices():
+    """Everything torch can run on here, best first: (spec, label, free bytes).
+
+    CUDA cards are ranked by free memory rather than by index, so ``auto`` picks
+    the card that is idle rather than the one that happens to be first.
+    """
+    found = []
+    for index in range(torch.cuda.device_count()):
+        free, total = torch.cuda.mem_get_info(index)
+        name = torch.cuda.get_device_properties(index).name
+        found.append((f"cuda:{index}",
+                      f"{name} ({free / 2**30:.1f} of {total / 2**30:.1f} GiB free)", free))
+    found.sort(key=lambda entry: -entry[2])
+    if torch.backends.mps.is_available():
+        found.append(("mps", "Apple GPU", 0))
+    found.append(("cpu", f"CPU ({os.cpu_count()} threads)", 0))
+    return found
+
+
+def resolve_device(name=None):
+    """None or "auto" means the roomiest gpu, then an Apple gpu, then the cpu."""
+    if name and name != "auto":
+        return torch.device(name)
+    return torch.device(available_devices()[0][0])
+
+
 def weights_dir():
     return Path(os.environ.get("SILKFRAME_CACHE", Path.home() / ".cache" / "silkframe"))
 
@@ -122,9 +148,7 @@ class Interpolator:
             raise ValueError(f"unknown model {model!r}; choose from {', '.join(MODELS)}")
         spec = MODELS[model]
 
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.device = torch.device(device)
+        self.device = resolve_device(device)
         # A lower scale makes the coarsest block work on a smaller image, which
         # needs correspondingly more padding to stay divisible.
         self.modulo = spec.modulo * math.ceil(max(1.0, 1.0 / scale))
@@ -149,7 +173,7 @@ class Interpolator:
         self.height = self.width = None
 
     def prepare(self, height, width):
-        """Fix the frame size: computes padding, the sampling grid and t=0.5."""
+        """Fix the frame size: computes padding, the sampling grid and the t buffer."""
         self.height, self.width = height, width
         ph = -(-height // self.modulo) * self.modulo
         pw = -(-width // self.modulo) * self.modulo
@@ -174,9 +198,20 @@ class Interpolator:
         return tensor.permute(1, 2, 0).contiguous().cpu().numpy()
 
     @torch.inference_mode()
-    def middle(self, img0, img1):
-        """Both arguments come from ``upload``; returns a tensor in the same layout."""
+    def at(self, img0, img1, t):
+        """The frame ``t`` of the way from img0 to img1, for 0 < t < 1.
+
+        Both arguments come from ``upload`` and the result is in the same
+        layout.  The timestep is refilled in place rather than reallocated: a
+        rate change like 30 -> 60000/1001 asks for a thousand distinct values of
+        t, and one buffer of them at 1080p would be several gigabytes.
+        """
+        self.timestep.fill_(float(t))
         return self.net(img0, img1, self.timestep, self.div, self.grid)
+
+    def middle(self, img0, img1):
+        """The frame halfway between the two."""
+        return self.at(img0, img1, 0.5)
 
     @torch.inference_mode()
     def probe_memory(self):

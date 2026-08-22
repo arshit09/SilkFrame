@@ -276,6 +276,11 @@ button { background: none; border: none; cursor: pointer; }
 .side .caption { padding: var(--spacing-4) 0 var(--spacing-8); }
 .side .caption + .group { margin-bottom: var(--spacing-12); }
 
+/* Groups keep their natural height and the sidebar scrolls past them. Without
+   this they are flex items that shrink, and the overflow:hidden below lets a
+   squeezed group clip its own rows away instead of growing a scrollbar. */
+.side > .group { flex: none; }
+
 .group {
   border: 1px solid var(--color-graphite);
   border-radius: var(--radius-cards);
@@ -360,6 +365,33 @@ button { background: none; border: none; cursor: pointer; }
   border-color: var(--color-signal-white);
   background: var(--color-signal-white);
   box-shadow: inset 0 0 0 3px var(--color-carbon);
+}
+
+/* A short row of exclusive choices, for when four full rows would cost more
+   sidebar than the choice is worth. */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-tags);
+  overflow: hidden;
+}
+
+.seg__cell {
+  padding: 5px 11px;
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  border-right: 1px solid var(--color-graphite);
+  transition: background 120ms linear, color 120ms linear;
+}
+
+.seg__cell:last-child { border-right: none; }
+.seg__cell:hover { background: var(--color-graphite); color: var(--color-chalk); }
+
+.seg__cell[aria-checked="true"] {
+  background: var(--color-signal-white);
+  color: var(--color-obsidian);
 }
 
 select {

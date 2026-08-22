@@ -1,11 +1,13 @@
 # SilkFrame
 
-Doubles the frames of any video by synthesising a new frame between every pair
+Multiplies the frames of any video by synthesising new frames between the pairs
 of existing ones, using RIFE v4.25.
 
 ```
 python gui.py                                  # drag and drop window
 python silkframe.py clip.mp4                   # 30 fps -> 60 fps, same length, audio kept
+python silkframe.py clip.mp4 --factor 4        # 30 fps -> 120 fps
+python silkframe.py clip.mp4 --target-fps 60   # 23.976 fps -> exactly 60
 python silkframe.py clip.mp4 --mode slowmo     # 30 fps, half speed, twice as long
 ```
 
@@ -28,8 +30,12 @@ to end.
 ## The window
 
 `python gui.py` (or `pythonw gui.py` for no console) opens a drop target. Drop
-one or more videos and each is written beside its source, as `name.2x.mp4` or
-`name.slowmo.mp4`. Batches run one at a time, more files can be dropped while a
+one or more videos and each is written beside its source, as `name.4x.mp4` or
+`name.slowmo.mp4`, after whatever the sidebar was set to when the file was
+added. The sidebar picks the mode, how many frames come out per frame in, and
+which device does the work; the device list fills itself a second or two after
+the window opens, because naming the GPUs means loading torch. Batches run one
+at a time, more files can be dropped while a
 job is running, a file that fails is logged and the rest carry on, and cancel
 abandons the whole batch. The front end is plain HTML, CSS and JavaScript in
 `web/`, rendered by pywebview in a native window.
@@ -73,23 +79,40 @@ over a cross-fade. Reproduce with `python benchmark.py your.mp4 --models all`.
 
 | flag | default | notes |
 | --- | --- | --- |
-| `--mode fps\|slowmo` | `fps` | `fps` doubles the rate and keeps audio; `slowmo` halves the speed and drops it |
+| `--mode fps\|slowmo` | `fps` | `fps` raises the rate and keeps the audio; `slowmo` stretches the running time and drops it |
+| `--factor`, `-f` | `2` | frames out per frame in; `3` and `4` are the useful ones, `8` works |
+| `--target-fps` | off | an exact rate instead of a whole multiple: `60`, `59.94`, `60000/1001`. fps mode only |
 | `--model` | `4.25` | `4.26`, `4.25.heavy`, `4.26.heavy`, `4.25.lite` |
 | `--scale` | `1.0` | `0.5` for 4K or when memory is tight, `2.0` for small frames or very slow motion |
-| `--device` | auto | `cuda`, `cuda:1`, `cpu` |
+| `--device` | `auto` | `auto` takes the GPU with the most free memory; also `cuda`, `cuda:1`, `mps`, `cpu` |
+| `--list-devices` | | print what torch can see here, then exit |
+| `--threads` | `0` | torch CPU threads; only bites on `--device cpu` |
 | `--fp32` | auto | force full precision instead of the timed choice |
+| `--start`, `--duration` | whole file | seconds or `HH:MM:SS`; render ten seconds to try settings out before committing to the whole clip. The copied audio starts on a packet boundary, so it can begin a frame or two off |
 | `--encoder`, `--crf`, `--preset`, `--pix-fmt` | `libx264`, `17`, `slow`, `yuv420p` | `--encoder h264_nvenc` for the GPU encoder |
 | `--no-audio` | off | drop the audio track |
+| `--no-overwrite` | off | stop rather than replace an output that is already there |
 | `--scene-threshold` | `0.35` | `0` interpolates across cuts too |
 | `--still-threshold` | `0.001` | `0` interpolates repeated frames too |
 
 ## Limits worth knowing
 
-- **2x only.** RIFE takes an arbitrary timestep, so 4x is a small change to the
-  loop, but nothing here does it today.
-- **Variable frame rate in, constant out.** The output rate is twice the
-  source's *average* rate, so running time and audio sync are preserved. Every
-  frame is kept, but a VFR source's timing wobble is evened out.
+- **Every new frame is guessed from the same two real ones.** At 4x the three
+  frames in a gap all come from one pair, so wherever the flow is wrong it
+  stays wrong for three frames instead of one. 2x and 3x are the safe
+  multiples; look at the result before trusting 8x.
+- **Trimming needs a container ffmpeg can seek in.** `--start` and `--duration`
+  rest on ffmpeg's seek, which works in mp4, mkv and mov but not in a raw `.ts`
+  transport stream: trimming one decodes nothing and stops with a message. The
+  same file processes fine whole.
+- **A target rate below the source rate drops frames.** `--target-fps` places
+  output frames on the source's timeline, so asking 60 fps footage for 30 picks
+  every other frame rather than blending them. It warns when it does this.
+- **Variable frame rate in, constant out.** The output rate is built from the
+  source's *average* rate - or, when `--start` or `--duration` narrows it, from
+  the measured rate of just that span, since a file-wide average says nothing
+  about one stretch of a VFR clip. Running time and audio sync are preserved
+  either way. Every frame is kept, but the timing wobble is evened out.
 - **8-bit.** Frames travel as RGB24, so 10-bit and HDR sources lose bit depth.
   The primaries, transfer curve and range are copied, so nothing shifts hue.
 - **Odd frame sizes** cannot be stored in yuv420p, so those clips are encoded as

@@ -139,10 +139,60 @@ def _read_exact(stream, array):
     return filled == len(view)
 
 
-def read_frames(info):
+def trim_options(start, duration):
+    """Input-side seek, shared by the decoder and the audio copy so they line up."""
+    options = []
+    if start:
+        options += ["-ss", f"{start:.6f}"]
+    if duration:
+        options += ["-t", f"{duration:.6f}"]
+    return options
+
+
+def span_rate(info, start, duration):
+    """(frame rate, frame count) over just the stretch that will be decoded.
+
+    A variable frame rate source's file-wide average says nothing about the
+    stretch that was asked for, so a trimmed span has to be measured or it is
+    written at a rate it never ran at: wrong speed, drifting away from the
+    audio copied beside it.  Every packet header is read rather than seeking to
+    the span, because ``-read_intervals`` lands on the keyframe before it and
+    would count frames the decoder goes on to throw away.  Nothing is decoded.
+    Returns (None, count) when there is too little there to measure a rate.
+    """
+    listed = subprocess.run(
+        # not csv: that appends a field for the side data mpeg-ts hangs on every
+        # packet, and every timestamp would come back with a comma stuck to it
+        [FFPROBE, "-v", "error", "-select_streams", str(info.stream),
+         "-show_entries", "packet=pts_time", "-of", "default=nw=1:nk=1", info.path],
+        capture_output=True, text=True, creationflags=NO_WINDOW,
+    ).stdout.split()
+    stamps = []
+    for value in listed:
+        try:
+            stamps.append(float(value))
+        except ValueError:  # "N/A", or whatever else a container decorates it with
+            continue
+    if not stamps:
+        return None, 0
+    stamps.sort()  # a container may store its packets in decode order
+    # -ss counts from where the stream starts, which is not 0 in every container:
+    # mpeg-ts conventionally opens at 1.4 seconds.
+    origin = stamps[0]
+    first = start or 0.0
+    beyond = first + duration if duration else float("inf")
+    # exactly the frames -ss and -t leave for the decoder to hand over
+    times = [stamp for stamp in stamps if first <= stamp - origin < beyond]
+    if len(times) < 2 or times[-1] == times[0]:
+        return None, len(times)
+    seconds = Fraction(times[-1] - times[0]).limit_denominator(1000000)
+    return Fraction(len(times) - 1) / seconds, len(times)
+
+
+def read_frames(info, start=None, duration=None):
     """Yield decoded frames as writable HxWx3 uint8 RGB arrays."""
     command = [
-        FFMPEG, "-v", "error", "-nostdin", "-i", info.path,
+        FFMPEG, "-v", "error", "-nostdin", *trim_options(start, duration), "-i", info.path,
         "-map", f"0:{info.stream}", "-fps_mode", "passthrough",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
     ]
@@ -169,7 +219,7 @@ def read_frames(info):
 
 
 def open_writer(path, info, fps, encoder="libx264", crf=17, preset="slow",
-                pix_fmt="yuv420p", audio=True):
+                pix_fmt="yuv420p", audio=True, start=None, duration=None):
     """Start an ffmpeg process that accepts raw RGB frames on stdin."""
     if (info.width % 2 or info.height % 2) and not any(tag in pix_fmt for tag in ("444", "rgb", "gbr")):
         print(f"note: {info.width}x{info.height} has an odd side, "
@@ -181,7 +231,9 @@ def open_writer(path, info, fps, encoder="libx264", crf=17, preset="slow",
         "-s", f"{info.width}x{info.height}", "-r", str(fps), "-i", "-",
     ]
     if audio:
-        command += ["-i", info.path, "-map", "1:a:0", "-c:a", "copy"]
+        # Copied packets can only start on a packet boundary, so a trimmed audio
+        # track begins within a frame or two of where the video does.
+        command += [*trim_options(start, duration), "-i", info.path, "-map", "1:a:0", "-c:a", "copy"]
     command += ["-map", "0:v:0", "-c:v", encoder, "-pix_fmt", pix_fmt]
     if "nvenc" in encoder or "qsv" in encoder or "amf" in encoder:
         command += ["-cq", str(crf), "-preset", preset]

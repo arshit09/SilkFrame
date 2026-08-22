@@ -38,7 +38,7 @@
             <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
           </svg>
           <p class="drop__title">Drop videos here</p>
-          <p class="drop__hint">each one is written beside its source as name.2x.mp4</p>
+          <p class="drop__hint" id="drop-hint">each one is written beside its source as name.2x.mp4</p>
           <button class="pill" id="choose" type="button">Choose files</button>
         </div>
       </div>
@@ -61,8 +61,8 @@
             <rect x="22" y="9" width="7" height="14" rx="1"></rect>
           </svg>
           <span class="row__text">
-            <span class="row__label">Double the frame rate</span>
-            <span class="row__hint">30 fps becomes 60 fps. Same length, audio copied.</span>
+            <span class="row__label">Higher frame rate</span>
+            <span class="row__hint" id="hint-fps">30 fps becomes 60. Same length, audio copied.</span>
           </span>
           <span class="marker"></span>
         </button>
@@ -72,11 +72,56 @@
             <path d="M16 9v7l5 3"></path>
           </svg>
           <span class="row__text">
-            <span class="row__label">Half speed slow motion</span>
-            <span class="row__hint">Twice as long at the same rate. No audio.</span>
+            <span class="row__label">Slow motion</span>
+            <span class="row__hint" id="hint-slowmo">2x as long at the same rate. No audio.</span>
           </span>
           <span class="marker"></span>
         </button>
+      </div>
+
+      <p class="caption">Speed</p>
+      <div class="group">
+        <div class="row row--static">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M3 6v20M29 6v20"></path>
+            <path d="M9.5 11v10M16 11v10M22.5 11v10"></path>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Frames out per frame in</span>
+            <span class="row__hint" id="hint-factor">One new frame between every pair.</span>
+            <span class="row__controls">
+              <span class="seg" role="radiogroup" aria-label="Frames out per frame in">
+                <button class="seg__cell" type="button" role="radio" data-factor="2"
+                        aria-checked="true">2x</button>
+                <button class="seg__cell" type="button" role="radio" data-factor="3"
+                        aria-checked="false">3x</button>
+                <button class="seg__cell" type="button" role="radio" data-factor="4"
+                        aria-checked="false">4x</button>
+                <button class="seg__cell" type="button" role="radio" data-factor="8"
+                        aria-checked="false">8x</button>
+              </span>
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <p class="caption">Processing</p>
+      <div class="group">
+        <div class="row row--static">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="9" y="9" width="14" height="14" rx="1"></rect>
+            <path d="M13 3v6M19 3v6M13 23v6M19 23v6M3 13h6M3 19h6M23 13h6M23 19h6"></path>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Device</span>
+            <span class="row__hint">Auto takes the GPU with the most free memory.</span>
+            <span class="row__controls">
+              <select id="device" aria-label="Device">
+                <option value="auto">Auto</option>
+              </select>
+            </span>
+          </span>
+        </div>
       </div>
 
       <p class="caption">Staging</p>

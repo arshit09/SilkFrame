@@ -127,20 +127,84 @@ def main():
         # No window: App only needs one to paint, and nothing here paints.
         app = gui.App()
         check("slowmo output is named apart from the fps one",
-              gui.output_for(Path("a/clip.mp4"), "slowmo").name == "clip.slowmo.mp4")
+              gui.output_for(Path("a/clip.mp4"), "slowmo", 2).name == "clip.slowmo.mp4")
+        check("the factor reaches the output name",
+              gui.output_for(Path("a/clip.mp4"), "fps", 4).name == "clip.4x.mp4")
         here = os.path.splitdrive(work)[0]
         other = next((d for d, free in gui.drives() if d != here and free > 5 * 2**30), None)
         if other:
             source = work / "staged.mp4"
             shutil.copy2(work / "moving.mp4", source)
             before = set(Path(other + os.sep).iterdir())
-            app.run(source, {"mode": "fps", "drive": other})
+            app.run(source, {"mode": "fps", "factor": 2, "device": "auto", "drive": other})
             check("staging puts the result back beside the source",
                   (work / "staged.2x.mp4").exists())
             check("staging leaves nothing on the fast drive",
                   set(Path(other + os.sep).iterdir()) == before)
         else:
             print("  SKIP  staging round trip (no second drive with room)")
+
+    # 11. a factor above two puts factor-1 new frames in every gap
+    moving = work / "moving.mp4"
+    out = work / "moving.4x.mp4"
+    run(moving, "-o", out, "--factor", "4")
+    info = video.VideoInfo(out)
+    check("4x quadruples the frame rate", info.fps == 40, str(info.fps))
+    check("4x keeps 4N-3 frames", info.frames == 77, str(info.frames))
+
+    # 12. an exact output rate that the source rate does not divide into
+    out = work / "moving.25fps.mp4"
+    run(moving, "-o", out, "--target-fps", "25")
+    info = video.VideoInfo(out)
+    check("the target rate is exact", info.fps == 25, str(info.fps))
+    check("the target rate spans the whole clip", info.frames == 49, str(info.frames))
+
+    # 13. trimming decodes only the span that was asked for
+    out = work / "moving.trim.mp4"
+    run(moving, "-o", out, "--start", "0.5", "--duration", "1")
+    info = video.VideoInfo(out)
+    check("trim decodes only the requested span", 17 <= info.frames <= 21, str(info.frames))
+
+    # 14. a target rate under the source rate decimates without outrunning the audio
+    out = work / "moving.5fps.mp4"
+    run(moving, "-o", out, "--target-fps", "5")
+    info = video.VideoInfo(out)
+    check("a lower target rate drops frames", info.frames == 10, str(info.frames))
+    check("a lower target rate keeps the running time",
+          abs(float(info.duration) - 2.0) < 0.05, str(info.duration))
+
+    # 15. a trimmed span of a variable rate source is written at the span's own rate,
+    #     which here is 30 fps against a 19.6 fps file average
+    head, tail, listing = work / "head.mp4", work / "tail.mp4", work / "concat.txt"
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=160x96:rate=30:duration=2",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", head)
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=160x96:rate=2:duration=2",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", tail)
+    listing.write_text("\n".join(f"file '{path.as_posix()}'" for path in (head, tail)))
+    vfr = work / "vfr.mp4"
+    ffmpeg("-f", "concat", "-safe", "0", "-i", listing, "-c", "copy",
+           "-fps_mode", "passthrough", vfr)
+    check("the test clip really is variable rate", video.VideoInfo(vfr).variable)
+    out = work / "vfr.2x.mp4"
+    run(vfr, "-o", out, "--duration", "2")
+    info = video.VideoInfo(out)
+    check("a trimmed span uses its own rate, not the file average",
+          abs(float(info.fps) - 60) < 1, str(info.fps))
+    check("a trimmed span keeps its running time",
+          abs(float(info.duration) - 1.98) < 0.1, str(info.duration))
+
+    # 16. packet timestamps still parse on a container that decorates them
+    ts = work / "moving.ts"
+    ffmpeg("-i", work / "moving.mp4", "-map", "0:v", "-c", "copy", ts)
+    rate, counted = video.span_rate(video.VideoInfo(ts), 0.5, 1.0)
+    check("mpeg-ts packet timestamps parse",
+          rate is not None and abs(float(rate) - 10) < 0.5, f"{rate}, {counted} frames")
+
+    # 17. a trim that asks for nothing is refused, not silently ignored
+    refused = subprocess.run([PYTHON, "silkframe.py", str(moving), "--duration", "0"],
+                             capture_output=True, text=True)
+    check("--duration 0 is refused", refused.returncode != 0 and "positive" in refused.stderr,
+          refused.stderr.strip()[-160:])
 
     print(f"\n{'all checks passed' if not failures else str(len(failures)) + ' failed: ' + ', '.join(failures)}")
     return 1 if failures else 0

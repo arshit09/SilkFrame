@@ -44,6 +44,13 @@ def interpreter():
     return str(console if console.exists() else executable)
 
 
+def worker_command(*arguments):
+    """A packaged build re-runs itself for the work; a checkout runs the script."""
+    if FROZEN:
+        return [sys.executable, WORKER_FLAG, *arguments]
+    return [interpreter(), "-u", str(SILKFRAME), *arguments]
+
+
 def web_root():
     """The front end, beside this file in a checkout and inside a packaged build."""
     packaged = getattr(sys, "_MEIPASS", None)
@@ -72,9 +79,13 @@ def working_dir(drive):
     return Path(tempfile.mkdtemp(prefix="silkframe-", dir=parent))
 
 
-def output_for(source, mode):
+def output_for(source, mode, factor):
     suffix = source.suffix if source.suffix.lower() in KEEP_CONTAINER else ".mp4"
-    return source.with_name(f"{source.stem}{'.slowmo' if mode == 'slowmo' else '.2x'}{suffix}")
+    if mode == "slowmo":
+        tag = ".slowmo" if factor == 2 else f".slowmo{factor}x"
+    else:
+        tag = f".{factor}x"
+    return source.with_name(f"{source.stem}{tag}{suffix}")
 
 
 class Api:
@@ -93,13 +104,16 @@ class Api:
             "drives": letters,
             "drive": preferred,
             "mode": self._app.options["mode"],
+            "factor": self._app.options["factor"],
+            "device": self._app.options["device"],
             "stage": self._app.options["drive"] is not None,
             "greeting": "ready - drop a video, or choose one from disk",
         }
 
-    def set_options(self, mode, stage, drive):
-        """The mode and drive a file carries are the ones set when it was added."""
-        self._app.options = {"mode": mode, "drive": drive if stage else None}
+    def set_options(self, mode, factor, device, stage, drive):
+        """The options a file carries are the ones that were set when it was added."""
+        self._app.options = {"mode": mode, "factor": int(factor), "device": device,
+                             "drive": drive if stage else None}
 
     def browse(self):
         chosen = self._app.window.create_file_dialog(
@@ -124,7 +138,7 @@ class App:
         self.current = ""
         self.done = 0
         self.results = []
-        self.options = {"mode": "fps", "drive": None}
+        self.options = {"mode": "fps", "factor": 2, "device": "auto", "drive": None}
 
     # ---------------------------------------------------------------- startup
 
@@ -134,6 +148,24 @@ class App:
         window.events.closing += self.cancel
         threading.Thread(target=self.worker, daemon=True).start()
         threading.Thread(target=self.pump, daemon=True).start()
+        threading.Thread(target=self.probe_devices, daemon=True).start()
+
+    def probe_devices(self):
+        """Ask the worker what torch can see here, and fill the device picker.
+
+        Importing torch in this process instead would add seconds to the window
+        opening, so the list arrives a moment after the window does and the
+        picker holds nothing but Auto until it lands.
+        """
+        try:
+            listed = subprocess.run(worker_command("--list-devices"), capture_output=True,
+                                    text=True, timeout=300, cwd=str(SILKFRAME.parent),
+                                    creationflags=NO_WINDOW).stdout
+        except (OSError, subprocess.SubprocessError):
+            return
+        devices = [line.split("\t", 1) for line in listed.splitlines() if "\t" in line]
+        if devices:
+            self.push(kind="devices", devices=devices)
 
     def on_loaded(self):
         """Only Python can see the real path of a dropped file, so the drop
@@ -212,7 +244,7 @@ class App:
                 self.done = 0
 
     def run(self, source, options):
-        destination = output_for(source, options["mode"])
+        destination = output_for(source, options["mode"], options["factor"])
         drive = options["drive"]
         same_drive = drive and os.path.splitdrive(source.resolve())[0].upper() == drive.upper()
         if same_drive:
@@ -220,7 +252,7 @@ class App:
 
         if not drive or same_drive:
             self.announce("starting")
-            self.interpolate(source, destination, options["mode"])
+            self.interpolate(source, destination, options)
             self.push(kind="log", text=f"done -> {destination}")
             return
 
@@ -238,7 +270,7 @@ class App:
             staged_output = work / destination.name
 
             self.announce(f"processing on {drive}")
-            self.interpolate(staged, staged_output, options["mode"])
+            self.interpolate(staged, staged_output, options)
 
             self.announce(f"moving the result back to {destination.parent}")
             shutil.move(str(staged_output), str(destination))
@@ -252,14 +284,13 @@ class App:
                     pass
             self.push(kind="log", text=f"cleaned up {work}")
 
-    def interpolate(self, source, destination, mode):
+    def interpolate(self, source, destination, options):
         if self.cancelled.is_set():  # cancelled during the copy, before any work started
             raise RuntimeError("cancelled")
-        arguments = [str(source), "-o", str(destination), "--mode", mode]
-        if FROZEN:  # a packaged build re-runs itself instead of looking for python
-            command = [sys.executable, WORKER_FLAG, *arguments]
-        else:
-            command = [interpreter(), "-u", str(SILKFRAME), *arguments]
+        command = worker_command(str(source), "-o", str(destination),
+                                 "--mode", options["mode"],
+                                 "--factor", str(options["factor"]),
+                                 "--device", options["device"])
         environment = dict(os.environ, PYTHONIOENCODING="utf-8")
         self.process = subprocess.Popen(
             command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -341,8 +372,12 @@ def worker_process():
     """The packaged exe re-runs itself for each video; this is that second run."""
     import io
 
-    if sys.stderr is None:  # a windowed build starts with no streams attached
-        sys.stderr = io.TextIOWrapper(io.FileIO(2, "w"), errors="replace", line_buffering=True)
+    # A windowed build starts with no streams attached, and --list-devices
+    # answers on stdout while the progress lines go to stderr.
+    for number, name in ((1, "stdout"), (2, "stderr")):
+        if getattr(sys, name) is None:
+            setattr(sys, name, io.TextIOWrapper(io.FileIO(number, "w"),
+                                                errors="replace", line_buffering=True))
     import silkframe
 
     silkframe.main(sys.argv[2:])

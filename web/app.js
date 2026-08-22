@@ -9,7 +9,12 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   drop: $("drop"),
+  dropHint: $("drop-hint"),
   choose: $("choose"),
+  device: $("device"),
+  hintFps: $("hint-fps"),
+  hintSlowmo: $("hint-slowmo"),
+  hintFactor: $("hint-factor"),
   stage: $("stage"),
   driveCell: $("drive-cell"),
   drive: $("drive"),
@@ -24,13 +29,28 @@ const ui = {
   close: $("close"),
 };
 
-const state = { mode: "fps", stage: false, drives: [], busy: false };
+const state = { mode: "fps", factor: 2, device: "auto", stage: false, drives: [], busy: false };
 
 // ------------------------------------------------------------------- options
 
 function pushOptions() {
   if (!window.pywebview) return;
-  window.pywebview.api.set_options(state.mode, state.stage, ui.drive.value || "");
+  window.pywebview.api.set_options(
+    state.mode, state.factor, state.device, state.stage, ui.drive.value || "");
+}
+
+// Mode and factor only mean something together - 4x is a doubled rate twice
+// over in one mode and a quarter-speed clip in the other - so every label that
+// carries a number is rewritten whenever either of them changes.
+function describe() {
+  const n = state.factor;
+  ui.hintFps.textContent = `30 fps becomes ${30 * n}. Same length, audio copied.`;
+  ui.hintSlowmo.textContent = `${n}x as long at the same rate. No audio.`;
+  ui.hintFactor.textContent = n === 2
+    ? "One new frame between every pair."
+    : `${n - 1} new frames between every pair.`;
+  const tag = state.mode === "slowmo" ? (n === 2 ? "slowmo" : `slowmo${n}x`) : `${n}x`;
+  ui.dropHint.textContent = `each one is written beside its source as name.${tag}.mp4`;
 }
 
 function setMode(mode) {
@@ -38,7 +58,38 @@ function setMode(mode) {
   document.querySelectorAll("[data-mode]").forEach((cell) => {
     cell.setAttribute("aria-checked", String(cell.dataset.mode === mode));
   });
+  describe();
   pushOptions();
+}
+
+function setFactor(factor) {
+  state.factor = factor;
+  document.querySelectorAll("[data-factor]").forEach((cell) => {
+    cell.setAttribute("aria-checked", String(Number(cell.dataset.factor) === factor));
+  });
+  describe();
+  pushOptions();
+}
+
+function setDevice(spec) {
+  state.device = spec;
+  ui.device.value = spec;
+  pushOptions();
+}
+
+// The list arrives a moment after the window does, because naming the GPUs
+// means loading torch. Whatever was chosen in the meantime is kept.
+function fillDevices(devices) {
+  const chosen = state.device;
+  ui.device.innerHTML = "";
+  [["auto", "Auto"], ...devices].forEach(([spec, label]) => {
+    const option = document.createElement("option");
+    option.value = spec;
+    option.textContent = label;
+    ui.device.append(option);
+  });
+  ui.device.value = chosen;
+  setDevice(ui.device.value || "auto");
 }
 
 function setStaging(on) {
@@ -121,6 +172,9 @@ const app = {
       case "drives":
         fillDrives(message.drives, message.drive);
         break;
+      case "devices":
+        fillDevices(message.devices);
+        break;
       default:
         break;
     }
@@ -142,6 +196,10 @@ ui.close.addEventListener("click", () => window.pywebview.api.close());
 document.querySelectorAll("[data-mode]").forEach((cell) => {
   cell.addEventListener("click", () => setMode(cell.dataset.mode));
 });
+document.querySelectorAll("[data-factor]").forEach((cell) => {
+  cell.addEventListener("click", () => setFactor(Number(cell.dataset.factor)));
+});
+ui.device.addEventListener("change", () => setDevice(ui.device.value));
 ui.stage.addEventListener("click", () => setStaging(!state.stage));
 ui.drive.addEventListener("change", () => {
   showFree();
@@ -168,6 +226,8 @@ ui.drive.addEventListener("click", (event) => event.stopPropagation());
 window.addEventListener("pywebviewready", async () => {
   const boot = await window.pywebview.api.boot();
   fillDrives(boot.drives, boot.drive);
+  setFactor(boot.factor);
+  setDevice(boot.device);
   setMode(boot.mode);
   setStaging(boot.stage);
   write(boot.greeting);
