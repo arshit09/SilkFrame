@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end checks on generated clips: python selftest.py"""
 
-import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -118,14 +116,12 @@ def main():
         gap = np.abs(guesses[0].astype(int) - guesses[1].astype(int)).mean()
         check("cpu and gpu agree", gap < 0.5, f"mean difference {gap:.3f}")
 
-    # 10. the window's staging round trip, if there is a second drive to stage on
+    # 10. the window names each output the way the sidebar was set
     try:
         import gui
     except Exception as error:  # no pywebview
         print(f"  SKIP  gui checks ({error})")
     else:
-        # No window: App only needs one to paint, and nothing here paints.
-        app = gui.App()
         check("slowmo output is named apart from the fps one",
               gui.output_for(Path("a/clip.mp4"), "slowmo", 2, "").name == "clip.slowmo.mp4")
         check("the factor reaches the output name",
@@ -134,20 +130,6 @@ def main():
               gui.output_for(Path("a/clip.mp4"), "fps", 4, "final").name == "clip.final.mp4")
         check("a suffix that cannot be a name falls back",
               gui.output_for(Path("a/clip.mp4"), "fps", 2, " ?? ").name == "clip.2x.mp4")
-        here = os.path.splitdrive(work)[0]
-        other = next((d for d, free in gui.drives() if d != here and free > 5 * 2**30), None)
-        if other:
-            source = work / "staged.mp4"
-            shutil.copy2(work / "moving.mp4", source)
-            before = set(Path(other + os.sep).iterdir())
-            app.run(source, {"mode": "fps", "factor": 2, "device": "auto",
-                             "suffix": "", "drive": other})
-            check("staging puts the result back beside the source",
-                  (work / "staged.2x.mp4").exists())
-            check("staging leaves nothing on the fast drive",
-                  set(Path(other + os.sep).iterdir()) == before)
-        else:
-            print("  SKIP  staging round trip (no second drive with room)")
 
     # 11. a factor above two puts factor-1 new frames in every gap
     moving = work / "moving.mp4"

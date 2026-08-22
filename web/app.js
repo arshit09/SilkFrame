@@ -12,9 +12,6 @@ const ui = {
   choose: $("choose"),
   note: $("note"),
   suffix: $("suffix"),
-  stage: $("stage"),
-  driveCell: $("drive-cell"),
-  free: $("free"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
@@ -29,7 +26,7 @@ const ui = {
 };
 
 const state = {
-  mode: "fps", factor: 2, device: "auto", suffix: "", stage: false, drives: [], busy: false,
+  mode: "fps", factor: 2, device: "auto", suffix: "", busy: false,
 };
 
 // ----------------------------------------------------------------- listboxes
@@ -109,10 +106,6 @@ window.addEventListener("keydown", (event) => {
 });
 
 const deviceSelect = makeSelect("device", (spec) => setDevice(spec));
-const driveSelect = makeSelect("drive", () => {
-  showFree();
-  pushOptions();
-});
 
 // Naming the GPUs means loading torch, so the real list lands a moment after
 // the window does and this stands in until it gets here.
@@ -167,8 +160,7 @@ document.addEventListener("mouseleave", hideTip);
 
 function pushOptions() {
   if (!window.pywebview) return;
-  window.pywebview.api.set_options(
-    state.mode, state.factor, state.device, state.suffix, state.stage, driveSelect.value || "");
+  window.pywebview.api.set_options(state.mode, state.factor, state.device, state.suffix);
 }
 
 // Mode and factor only mean something together - 4x is a doubled rate twice
@@ -226,25 +218,6 @@ function fillDevices(devices) {
   setDevice(deviceSelect.value || "auto");
 }
 
-function setStaging(on) {
-  state.stage = on;
-  ui.stage.setAttribute("aria-pressed", String(on));
-  ui.driveCell.setAttribute("aria-disabled", String(!on));
-  if (!on) driveSelect.close();
-  pushOptions();
-}
-
-function showFree() {
-  const found = state.drives.find((entry) => entry[0] === driveSelect.value);
-  ui.free.textContent = found ? `${Math.round(found[1] / 1073741824)} GB free` : "";
-}
-
-function fillDrives(drives, selected) {
-  state.drives = drives;
-  driveSelect.fill(drives.map(([letter]) => [letter, letter]), selected);
-  showFree();
-}
-
 // -------------------------------------------------------------------- output
 
 function write(text) {
@@ -288,9 +261,6 @@ const app = {
         } else {
           setProgress(0, 0);
         }
-        break;
-      case "drives":
-        fillDrives(message.drives, message.drive);
         break;
       case "devices":
         fillDevices(message.devices);
@@ -368,7 +338,6 @@ document.querySelectorAll("[data-mode]").forEach((cell) => {
 document.querySelectorAll("[data-factor]").forEach((cell) => {
   cell.addEventListener("click", () => setFactor(Number(cell.dataset.factor)));
 });
-ui.stage.addEventListener("click", () => setStaging(!state.stage));
 ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
 // The drop itself is handled in Python, which is the only side that can see the
@@ -389,12 +358,10 @@ ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
 window.addEventListener("pywebviewready", async () => {
   const boot = await window.pywebview.api.boot();
-  fillDrives(boot.drives, boot.drive);
   setFactor(boot.factor);
   setDevice(boot.device);
   setSuffix(boot.suffix);
   setMode(boot.mode);
-  setStaging(boot.stage);
   write(boot.greeting);
 });
 

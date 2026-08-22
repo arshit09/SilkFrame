@@ -5,9 +5,7 @@
 
 The interface is plain HTML, CSS and JavaScript in web/, rendered by pywebview
 in a native window. Drop videos on it and each one is written next to its
-source. With staging enabled the file is copied to a fast drive first,
-processed there, and the result is moved back; the copy and everything else in
-the working folder is deleted afterwards.
+source.
 """
 
 import ctypes
@@ -15,11 +13,8 @@ import json
 import os
 import queue
 import re
-import shutil
-import string
 import subprocess
 import sys
-import tempfile
 import threading
 from ctypes import wintypes
 from pathlib import Path
@@ -58,28 +53,6 @@ def web_root():
     """The front end, beside this file in a checkout and inside a packaged build."""
     packaged = getattr(sys, "_MEIPASS", None)
     return Path(packaged if packaged else Path(__file__).resolve().parent) / "web"
-
-
-def drives():
-    found = []
-    for letter in string.ascii_uppercase:
-        root = f"{letter}:{os.sep}"
-        if os.path.exists(root):
-            try:
-                free = shutil.disk_usage(root).free
-            except OSError:
-                continue
-            found.append((f"{letter}:", free))
-    return found
-
-
-def working_dir(drive):
-    """A private folder on `drive` to process in."""
-    if os.path.splitdrive(tempfile.gettempdir())[0].upper() == drive.upper():
-        return Path(tempfile.mkdtemp(prefix="silkframe-"))
-    parent = Path(f"{drive}{os.sep}silkframe-temp")
-    parent.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="silkframe-", dir=parent))
 
 
 def auto_tag(mode, factor):
@@ -156,24 +129,18 @@ class Api:
         self._app = app
 
     def boot(self):
-        letters = drives()
-        preferred = "C:" if any(letter == "C:" for letter, _ in letters) else (
-            letters[0][0] if letters else "")
         return {
-            "drives": letters,
-            "drive": preferred,
             "mode": self._app.options["mode"],
             "factor": self._app.options["factor"],
             "device": self._app.options["device"],
             "suffix": self._app.options["suffix"],
-            "stage": self._app.options["drive"] is not None,
             "greeting": "ready - drop a video, or choose one from disk",
         }
 
-    def set_options(self, mode, factor, device, suffix, stage, drive):
+    def set_options(self, mode, factor, device, suffix):
         """The options a file carries are the ones that were set when it was added."""
         self._app.options = {"mode": mode, "factor": int(factor), "device": device,
-                             "suffix": suffix, "drive": drive if stage else None}
+                             "suffix": suffix}
 
     def browse(self):
         chosen = self._app.window.create_file_dialog(
@@ -208,8 +175,7 @@ class App:
         self.current = ""
         self.done = 0
         self.results = []
-        self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": "",
-                        "drive": None}
+        self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": ""}
 
     # ---------------------------------------------------------------- startup
 
@@ -318,47 +284,12 @@ class App:
     def run(self, source, options):
         destination = output_for(source, options["mode"], options["factor"],
                                  options["suffix"])
-        drive = options["drive"]
-        same_drive = drive and os.path.splitdrive(source.resolve())[0].upper() == drive.upper()
-        if same_drive:
-            self.push(kind="log", text=f"{source.name} is already on {drive}, no copy needed")
-
-        if not drive or same_drive:
-            self.announce("starting")
-            self.interpolate(source, destination, options)
-            self.push(kind="log", text=f"done -> {destination}")
-            return
-
-        needed = source.stat().st_size * 3
-        free = shutil.disk_usage(f"{drive}{os.sep}").free
-        if free < needed:
-            raise RuntimeError(f"{drive} has {free / 2**30:.1f} GB free, "
-                               f"about {needed / 2**30:.1f} GB is needed")
-
-        work = working_dir(drive)
-        try:
-            self.announce(f"copying to {drive}")
-            staged = work / source.name
-            shutil.copy2(source, staged)
-            staged_output = work / destination.name
-
-            self.announce(f"processing on {drive}")
-            self.interpolate(staged, staged_output, options)
-
-            self.announce(f"moving the result back to {destination.parent}")
-            shutil.move(str(staged_output), str(destination))
-            self.push(kind="log", text=f"done -> {destination}")
-        finally:
-            shutil.rmtree(work, ignore_errors=True)
-            if work.parent.name == "silkframe-temp":
-                try:  # only succeeds once the last job on this drive is done
-                    work.parent.rmdir()
-                except OSError:
-                    pass
-            self.push(kind="log", text=f"cleaned up {work}")
+        self.announce("starting")
+        self.interpolate(source, destination, options)
+        self.push(kind="log", text=f"done -> {destination}")
 
     def interpolate(self, source, destination, options):
-        if self.cancelled.is_set():  # cancelled during the copy, before any work started
+        if self.cancelled.is_set():  # cancelled before the process was started
             raise RuntimeError("cancelled")
         command = worker_command(str(source), "-o", str(destination),
                                  "--mode", options["mode"],

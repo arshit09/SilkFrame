@@ -41,11 +41,6 @@ job is running, a file that fails is logged and the rest carry on, and cancel
 abandons the whole batch. The front end is plain HTML, CSS and JavaScript in
 `web/`, rendered by pywebview in a native window.
 
-**Copy to a fast drive while processing** stages the source on another drive,
-runs there and moves the result back. It rarely helps — interpolation is
-GPU-bound and 720p reads about 6 MB/s — so it is off by default and only worth
-it when the source sits on a network share or a USB drive.
-
 ## How it works
 
 ffmpeg decodes to raw RGB down a pipe on a reader thread, so decoding overlaps
