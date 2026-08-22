@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SilkFrame</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="toolbar">
+    <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="3" y="9" width="7" height="14" rx="1"></rect>
+      <rect x="12.5" y="9" width="7" height="14" rx="1" stroke-dasharray="2.5 2.5"></rect>
+      <rect x="22" y="9" width="7" height="14" rx="1"></rect>
+    </svg>
+    <span class="toolbar__title">SilkFrame</span>
+    <span class="toolbar__meta">RIFE 4.25</span>
+    <span class="toolbar__spacer"></span>
+    <span class="badge" id="badge" data-live="false">
+      <span class="badge__dot"></span>
+      <span id="badge-text">Ready</span>
+    </span>
+  </header>
+
+  <div class="workspace">
+    <main class="main">
+
+      <!-- A div, not a section: pywebview finds an element's events two
+           prototypes up, which is HTMLElement for a div but only Element for a
+           section, and Element carries no ondrop - so a section here silently
+           loses the drop. -->
+      <div class="drop" id="drop">
+        <canvas class="drop__dots" id="dots"></canvas>
+        <div class="drop__body">
+          <svg class="icon icon--gold icon--lg" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="7" width="28" height="18" rx="1"></rect>
+            <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
+          </svg>
+          <p class="drop__title">Drop videos here</p>
+          <p class="drop__hint">each one is written beside its source as name.2x.mp4</p>
+          <button class="pill" id="choose" type="button">Choose files</button>
+        </div>
+      </div>
+
+      <section class="pane">
+        <div class="pane__head"><span class="caption">Log</span></div>
+        <div class="log" id="log" aria-live="polite"></div>
+      </section>
+
+    </main>
+
+    <aside class="side">
+
+      <p class="caption">Output</p>
+      <div class="group" role="radiogroup" aria-label="Output">
+        <button class="row" type="button" role="radio" data-mode="fps" aria-checked="true">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="3" y="9" width="7" height="14" rx="1"></rect>
+            <rect x="12.5" y="9" width="7" height="14" rx="1" stroke-dasharray="2.5 2.5"></rect>
+            <rect x="22" y="9" width="7" height="14" rx="1"></rect>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Double the frame rate</span>
+            <span class="row__hint">30 fps becomes 60 fps. Same length, audio copied.</span>
+          </span>
+          <span class="marker"></span>
+        </button>
+        <button class="row" type="button" role="radio" data-mode="slowmo" aria-checked="false">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12"></circle>
+            <path d="M16 9v7l5 3"></path>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Half speed slow motion</span>
+            <span class="row__hint">Twice as long at the same rate. No audio.</span>
+          </span>
+          <span class="marker"></span>
+        </button>
+      </div>
+
+      <p class="caption">Staging</p>
+      <div class="group">
+        <button class="row" type="button" role="switch" id="stage" aria-pressed="false">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="3" y="18" width="26" height="9" rx="1"></rect>
+            <circle cx="24" cy="22.5" r="1.5"></circle>
+            <path d="M16 4v10M12 10l4 4 4-4"></path>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Copy to a fast drive</span>
+            <span class="row__hint">Process there, move the result back. Rarely faster.</span>
+          </span>
+          <span class="marker"></span>
+        </button>
+        <div class="row row--static" id="drive-cell" aria-disabled="true">
+          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12"></circle>
+            <circle cx="16" cy="16" r="3.5"></circle>
+            <path d="M16 4v3M16 25v3M4 16h3M25 16h3"></path>
+          </svg>
+          <span class="row__text">
+            <span class="row__label">Working drive</span>
+            <span class="row__controls">
+              <select id="drive" aria-label="Working drive"></select>
+              <span class="meta" id="free"></span>
+            </span>
+          </span>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <div class="statusbar__track"><div class="statusbar__fill" id="fill"></div></div>
+    <span class="statusbar__text" id="status">Ready</span>
+    <span class="meta" id="percent"></span>
+    <button class="ghost" id="cancel" type="button" disabled>Cancel</button>
+    <button class="pill" id="close" type="button" hidden>Close</button>
+  </footer>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

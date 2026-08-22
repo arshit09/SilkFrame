@@ -1,0 +1,490 @@
+/* Hyperstudio - blueprint scratched into obsidian.
+   Same palette, same hairlines, same weight 400 - but laid out as an
+   application, not a page: the window never scrolls, the panes do. */
+
+:root {
+  --color-obsidian: #101010;
+  --color-carbon: #080808;
+  --color-chalk: #f3f3f3;
+  --color-smoke: #9c9c9c;
+  --color-ash: #c1c1c1;
+  --color-graphite: #212121;
+  --color-iron: #474747;
+  --color-signal-white: #ffffff;
+  --color-compass-gold: #6f6759;
+  --color-card-slate: #3b3d45;
+  --color-pulse-green: #98ff38;
+  --color-badge: #1a1a1a;
+
+  /* Inter is the first substitute the brief names, but it is left out on
+     purpose: a common Windows install registers both its faces under the one
+     family, so every weight resolves to Bold and weight 400 - the whole voice
+     of this system - is lost. Install Aeonik, Satoshi or General Sans for the
+     real thing; otherwise the platform grotesque carries it. */
+  --font-aeonik: "Aeonik", "Satoshi", "General Sans", ui-sans-serif,
+                 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-input: "Input", "IBM Plex Mono", "JetBrains Mono", "Space Mono",
+                "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --text-caption: 13px;
+  --text-body: 16px;
+  --text-heading-xs: 18px;
+  --leading-heading-xs: 1.31;
+
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+
+  --radius-tags: 4px;
+  --radius-cards: 8px;
+  --radius-icons: 99px;
+  --radius-buttons: 9999px;
+
+  --toolbar-height: 48px;
+  --statusbar-height: 52px;
+  --side-width: 304px;
+  --log-height: 186px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;                /* the window is a frame; the panes scroll */
+  background: var(--color-obsidian);
+}
+
+body {
+  font-family: var(--font-aeonik);
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--color-chalk);
+  font-feature-settings: "ss01" on, "cv11" on;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;               /* chrome, not a document; the log opts back in */
+}
+
+button, select { font: inherit; color: inherit; }
+button { background: none; border: none; cursor: pointer; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-graphite); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-iron); }
+
+.caption {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  text-transform: uppercase;
+  color: var(--color-smoke);
+}
+
+.meta {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- shell */
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;                   /* lets the children own the overflow */
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ----------------------------------------------------------------- toolbar */
+
+.toolbar {
+  flex: none;
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  padding: 0 var(--spacing-16);
+  border-bottom: 1px solid var(--color-graphite);
+}
+
+.toolbar__title {
+  font-size: 15px;
+  color: var(--color-chalk);
+}
+
+.toolbar__meta {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  padding-left: var(--spacing-12);
+  border-left: 1px solid var(--color-graphite);
+}
+
+.toolbar__spacer { flex: 1; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background: var(--color-badge);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-tags);
+  padding: 6px 12px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--color-smoke);
+  white-space: nowrap;
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-icons);
+  border: 1px solid var(--color-iron);
+  flex: none;
+}
+
+.badge[data-live="true"] .badge__dot {
+  background: var(--color-pulse-green);
+  border-color: var(--color-pulse-green);
+}
+
+/* --------------------------------------------------------------- drop area */
+
+.drop {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: var(--spacing-16);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  background: var(--color-carbon);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 120ms linear;
+}
+
+.drop:hover { border-color: var(--color-iron); }
+.drop[data-dragging="true"] { border-color: var(--color-signal-white); }
+
+.drop__dots {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.drop__body {
+  position: relative;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-12);
+  padding: var(--spacing-20);
+  pointer-events: none;
+}
+
+.drop__body .pill { pointer-events: auto; margin-top: var(--spacing-4); }
+
+.drop__title {
+  font-size: var(--text-heading-xs);
+  line-height: var(--leading-heading-xs);
+  color: var(--color-chalk);
+}
+
+.drop__hint {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+}
+
+/* ---------------------------------------------------------------- log pane */
+
+.pane {
+  flex: none;
+  height: var(--log-height);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-graphite);
+  min-height: 0;
+}
+
+.pane__head {
+  flex: none;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-16);
+}
+
+.log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--spacing-16) var(--spacing-12);
+  font-family: var(--font-input);
+  font-size: 13px;
+  line-height: 1.54;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  user-select: text;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log__line { display: block; }
+
+/* ----------------------------------------------------------------- sidebar */
+
+.side {
+  flex: none;
+  width: var(--side-width);
+  border-left: 1px solid var(--color-graphite);
+  padding: var(--spacing-16);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.side .caption { padding: var(--spacing-4) 0 var(--spacing-8); }
+.side .caption + .group { margin-bottom: var(--spacing-12); }
+
+.group {
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-12);
+  width: 100%;
+  text-align: left;
+  padding: var(--spacing-12) var(--spacing-16);
+  border-bottom: 1px solid var(--color-graphite);
+  background: transparent;
+  transition: background 120ms linear;
+}
+
+.row:last-child { border-bottom: none; }
+.row:not(.row--static):hover { background: var(--color-carbon); }
+
+.row[aria-checked="true"],
+.row[aria-pressed="true"] { background: var(--color-carbon); }
+
+.row[aria-disabled="true"] { opacity: 0.4; }
+.row[aria-disabled="true"] select { pointer-events: none; }
+
+.row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.row__label {
+  font-size: 14px;
+  color: var(--color-chalk);
+}
+
+.row__hint {
+  font-size: 13px;
+  line-height: 1.38;
+  color: var(--color-smoke);
+}
+
+.row__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  margin-top: var(--spacing-4);
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+  margin-top: 1px;
+}
+
+.icon--gold { stroke: var(--color-compass-gold); }
+.icon--lg { width: 28px; height: 28px; }
+
+.marker {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-icons);
+  border: 1.5px solid var(--color-iron);
+  flex: none;
+  margin-top: 2px;
+}
+
+/* A switch reads as a square; a radio reads as a circle. */
+.row[role="switch"] .marker { border-radius: var(--radius-tags); }
+
+.row[aria-checked="true"] .marker,
+.row[aria-pressed="true"] .marker {
+  border-color: var(--color-signal-white);
+  background: var(--color-signal-white);
+  box-shadow: inset 0 0 0 3px var(--color-carbon);
+}
+
+select {
+  background: var(--color-obsidian);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-tags);
+  color: var(--color-chalk);
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+select:focus-visible, button:focus-visible {
+  outline: 1px solid var(--color-ash);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------- buttons */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  background: var(--color-signal-white);
+  color: var(--color-obsidian);
+  border-radius: var(--radius-buttons);
+  padding: 9px 20px;
+  font-size: 13px;
+  text-transform: uppercase;
+  transition: opacity 120ms linear;
+}
+
+.pill:hover { opacity: 0.86; }
+.pill:disabled { opacity: 0.3; cursor: default; }
+
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--color-signal-white);
+  color: var(--color-signal-white);
+  border-radius: var(--radius-cards);
+  padding: 7px 16px;
+  font-size: 13px;
+  text-transform: uppercase;
+  transition: opacity 120ms linear;
+}
+
+.ghost:hover { opacity: 0.7; }
+.ghost:disabled {
+  border-color: var(--color-graphite);
+  color: var(--color-iron);
+  cursor: default;
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------- status bar */
+
+.statusbar {
+  position: relative;
+  flex: none;
+  height: var(--statusbar-height);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-16);
+  padding: 0 var(--spacing-16);
+  border-top: 1px solid var(--color-graphite);
+}
+
+/* The progress bar is the top edge of the status bar, so it never takes a row
+   of its own and never moves anything when it appears. */
+.statusbar__track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.statusbar__fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-chalk);
+  transition: width 160ms linear;
+}
+
+.statusbar__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--color-smoke);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusbar__text[data-state="done"],
+.statusbar__text[data-state="failed"] { color: var(--color-chalk); }
+
+.statusbar__text[data-state="done"]::before,
+.statusbar__text[data-state="failed"]::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--spacing-8);
+  border-radius: var(--radius-icons);
+  border: 1px solid var(--color-ash);
+  vertical-align: middle;
+}
+
+.statusbar__text[data-state="done"]::before { background: var(--color-ash); }
+
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ small window */
+
+@media (max-width: 940px) {
+  :root { --side-width: 260px; --log-height: 150px; }
+}
+
+/* Too short to explain itself: drop to labels only, the way a settings pane
+   does when the window is squeezed, so nothing in the sidebar is cut off. */
+@media (max-height: 600px) {
+  :root { --log-height: 132px; }
+  .drop__hint { display: none; }
+  .side .row__hint { display: none; }
+}

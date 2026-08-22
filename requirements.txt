@@ -1,0 +1,9 @@
+# ffmpeg and ffprobe must also be installed and on PATH.
+# For a CUDA build of torch, install it first from https://pytorch.org, e.g.
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch>=2.4
+numpy>=1.23
+# gui.py renders its HTML/CSS/JS front end in a native window through this.
+# On Windows it needs the Edge WebView2 runtime, which ships with Windows 10
+# and 11; elsewhere it uses the system webview.
+pywebview>=6.0
