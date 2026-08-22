@@ -50,7 +50,7 @@
         <div class="queue" id="queue"></div>
         <div class="drop__more">
           <span class="meta" id="count"></span>
-          <span class="meta">drag to reorder - drop more, or</span>
+          <span class="meta">click one to change it - drag to reorder - drop more, or</span>
           <button class="drop__link" id="choose-more" type="button">choose files</button>
         </div>
       </div>
@@ -63,6 +63,19 @@
     </main>
 
     <aside class="side">
+
+      <!-- Which file the controls below are set to. Nothing chosen means they
+           are the settings the files added next will take. -->
+      <p class="caption">Settings for</p>
+      <div class="scope" id="scope" data-file="false">
+        <span class="scope__name" id="scope-name">videos added next</span>
+        <button class="scope__clear" id="scope-clear" type="button"
+                aria-label="Back to the settings for videos added next">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M0.7 0.7l8.6 8.6M9.3 0.7l-8.6 8.6"></path>
+          </svg>
+        </button>
+      </div>
 
       <p class="caption">Output</p>
       <div class="seg" role="radiogroup" aria-label="Output">

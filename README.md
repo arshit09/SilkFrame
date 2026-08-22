@@ -35,15 +35,19 @@ run; drag a row to move it, click the cross to drop it, and press start when the
 order is right. Each file is written beside its source, as `name.4x.mp4` or
 `name.slowmo.mp4`, after whatever the sidebar was set to when the file was
 added - or after the suffix typed there, if one was. The sidebar picks the
-mode, how many frames come out per frame in, and which device does the work;
-the device list fills itself a second or two after the window opens, because
-naming the GPUs means loading torch. Files run one at a time, more can be
-dropped and the ones still waiting reordered while a job is running, and a file
-that fails is logged and the rest carry on. Stop is the pair to start: the file
-being worked on is abandoned and goes back to the head of the line, everything
-behind it keeps its place, and start picks the same order back up. The front end
-is plain HTML, CSS and JavaScript in `web/`, rendered by pywebview in a native
-window.
+mode, how many frames come out per frame in, the suffix and which device does
+the work, and all four belong to one file at a time: click a waiting row and
+the sidebar shows that file's own settings and edits them, so a single queue
+can hold a 2x pass, a 4x on the GPU and an 8x slow motion at once. Click the
+row again, or the cross beside its name, and the sidebar goes back to setting
+what the files added next will take. The device list fills itself a second or
+two after the window opens, because naming the GPUs means loading torch. Files
+run one at a time, more can be dropped and the ones still waiting reordered
+while a job is running, and a file that fails is logged and the rest carry on.
+Stop is the pair to start: the file being worked on is abandoned and goes back
+to the head of the line, everything behind it keeps its place, and start picks
+the same order back up. The front end is plain HTML, CSS and JavaScript in
+`web/`, rendered by pywebview in a native window.
 
 ## How it works
 

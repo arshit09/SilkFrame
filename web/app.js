@@ -15,6 +15,9 @@ const ui = {
   chooseMore: $("choose-more"),
   note: $("note"),
   suffix: $("suffix"),
+  scope: $("scope"),
+  scopeName: $("scope-name"),
+  scopeClear: $("scope-clear"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
@@ -32,6 +35,11 @@ const ui = {
 const state = {
   mode: "fps", factor: 2, device: "auto", suffix: "", busy: false,
   items: [], running: false, revision: 0,
+  // The waiting file the sidebar is set to, or 0 for the settings the files
+  // added next will take - and, so they survive a file being chosen and let go
+  // of again, a copy of those settings.
+  target: 0,
+  defaults: { mode: "fps", factor: 2, device: "auto", suffix: "" },
 };
 
 // ----------------------------------------------------------------- listboxes
@@ -110,7 +118,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeSelects();
 });
 
-const deviceSelect = makeSelect("device", (spec) => setDevice(spec));
+const deviceSelect = makeSelect("device", (spec) => change({ device: spec }));
 
 // Naming the GPUs means loading torch, so the real list lands a moment after
 // the window does and this stands in until it gets here.
@@ -122,7 +130,8 @@ deviceSelect.fill([["auto", "Auto"]], "auto");
 // it is given and is cut off with an ellipsis. Hovering one shows the whole of
 // it - and only when it really was cut, so nothing ever pops up over text that
 // can already be read in full.
-const CLIPPED = ".select__trigger, .select__item, .statusbar__text, .queue__name";
+const CLIPPED = ".select__trigger, .select__item, .statusbar__text, .queue__name, "
+              + ".scope__name";
 
 const tip = document.createElement("div");
 tip.className = "tip";
@@ -163,9 +172,18 @@ document.addEventListener("mouseleave", hideTip);
 
 // ------------------------------------------------------------------- options
 
+/* The sidebar holds one set of settings at a time: the ones the files added
+ * next will take, or - once a waiting file has been clicked - the ones that
+ * file is carrying. Everything here edits whichever of the two is on screen,
+ * and the id sent alongside is what tells Python which. */
+
+const current = () => ({ mode: state.mode, factor: state.factor,
+                         device: state.device, suffix: state.suffix });
+
 function pushOptions() {
   if (!window.pywebview) return;
-  window.pywebview.api.set_options(state.mode, state.factor, state.device, state.suffix);
+  window.pywebview.api.set_options(state.target, state.mode, state.factor,
+                                   state.device, state.suffix);
 }
 
 // Mode and factor only mean something together - 4x is a doubled rate twice
@@ -182,45 +200,39 @@ function describe() {
     : `${n}x`;
 }
 
-function setMode(mode) {
-  state.mode = mode;
+// Every control put back to what the settings on screen say, telling Python
+// nothing: this is how a file that has just been clicked is shown.
+function draw() {
   document.querySelectorAll("[data-mode]").forEach((cell) => {
-    cell.setAttribute("aria-checked", String(cell.dataset.mode === mode));
+    cell.setAttribute("aria-checked", String(cell.dataset.mode === state.mode));
   });
-  describe();
-  pushOptions();
-}
-
-function setFactor(factor) {
-  state.factor = factor;
   document.querySelectorAll("[data-factor]").forEach((cell) => {
-    cell.setAttribute("aria-checked", String(Number(cell.dataset.factor) === factor));
+    cell.setAttribute("aria-checked", String(Number(cell.dataset.factor) === state.factor));
   });
+  deviceSelect.show(state.device);
+  if (ui.suffix.value !== state.suffix) ui.suffix.value = state.suffix;
   describe();
-  pushOptions();
 }
 
-function setDevice(spec) {
-  state.device = spec;
-  deviceSelect.show(spec);
+function change(patch) {
+  Object.assign(state, patch);
+  // The defaults are only ever what the sidebar holds while no file is chosen,
+  // so they are kept up to date here and put back when one is let go of.
+  if (!state.target) state.defaults = current();
+  draw();
   pushOptions();
 }
 
 // Anything Windows will not take in a file name is dropped as it is typed, so
 // the field always reads as what lands on the disk. An empty one means the
 // automatic name, which is what the placeholder is showing.
-function setSuffix(text) {
-  const kept = text.replace(/[<>:"/\\|?*]/g, "");
-  if (ui.suffix.value !== kept) ui.suffix.value = kept;
-  state.suffix = kept;
-  pushOptions();
-}
+const setSuffix = (text) => change({ suffix: text.replace(/[<>:"/\\|?*]/g, "") });
 
 // The list arrives a moment after the window does, because naming the GPUs
 // means loading torch. Whatever was chosen in the meantime is kept.
 function fillDevices(devices) {
   deviceSelect.fill([["auto", "Auto"], ...devices], state.device);
-  setDevice(deviceSelect.value || "auto");
+  change({ device: deviceSelect.value || "auto" });
 }
 
 // --------------------------------------------------------------- the queue
@@ -331,6 +343,12 @@ function render(items, running) {
   standing().forEach((row) => { row.style.transition = ""; row.style.transform = ""; });
   fresh.forEach((row) => { delete row.dataset.entering; });
 
+  // The file the sidebar is set to may have started, or been taken out of the
+  // line, since the last snapshot; either way it is no longer the one on screen.
+  if (state.target && !items.some((item) => item.id === state.target
+                                            && item.state === "queued")) choose(0);
+  else mark();
+
   ui.drop.dataset.empty = String(items.length === 0);
   ui.count.textContent = items.length
     ? `${items.length} ${items.length === 1 ? "video" : "videos"}`
@@ -360,6 +378,38 @@ function forget(id) {
   render(state.items.filter((item) => item.id !== id), state.running);
   window.pywebview.api.remove(id);
 }
+
+// ---------------------------------------------------------- choosing a file
+
+/* Every file carries its own settings, taken from the sidebar as it arrived.
+ * Clicking a waiting file brings that set back up in the sidebar, which then
+ * edits it until it is let go of - by clicking it again, by clicking past the
+ * end of the list, or by the cross beside its name. */
+
+function mark() {
+  const item = state.items.find((one) => one.id === state.target);
+  rows.forEach((row, id) => { row.dataset.chosen = String(id === state.target); });
+  ui.scope.dataset.file = String(Boolean(item));
+  ui.scopeName.textContent = item ? item.name : "videos added next";
+}
+
+function choose(id) {
+  const item = state.items.find((one) => one.id === id && one.state === "queued");
+  // Clicking the file already on screen is how it is let go of again.
+  const target = item && item.id !== state.target ? item.id : 0;
+  if (target === state.target) return;
+  state.target = target;
+  Object.assign(state, target ? item.options : state.defaults);
+  draw();
+  mark();
+}
+
+// Past the end of the list is still the list, and means none of it.
+ui.queue.addEventListener("click", (event) => {
+  if (!event.target.closest(".queue__row")) choose(0);
+});
+
+ui.scopeClear.addEventListener("click", () => choose(0));
 
 // ------------------------------------------------------------ dragging a row
 
@@ -409,7 +459,6 @@ ui.queue.addEventListener("pointerdown", (event) => {
   const row = event.target.closest(".queue__row");
   if (!row || row.dataset.state !== "queued") return;
   const line = [...ui.queue.querySelectorAll('.queue__row[data-state="queued"]')];
-  if (line.length < 2) return;              // nothing to reorder it past
   const at = line.indexOf(row);
   held = { row, line, from: at, to: at, pointer: event.pointerId,
            y: event.clientY, at: event.clientY, scroll: ui.queue.scrollTop,
@@ -421,6 +470,7 @@ ui.queue.addEventListener("pointermove", (event) => {
   if (!held || event.pointerId !== held.pointer) return;
   held.at = event.clientY;
   if (!held.live) {
+    if (held.line.length < 2) return;                // nothing to reorder it past
     if (Math.abs(held.at - held.y) < LIFT) return;   // a click is not a drag
     held.live = true;
     held.row.dataset.held = "true";
@@ -437,7 +487,10 @@ function release() {
   const id = Number(row.dataset.id);
   held = null;
   delete row.dataset.held;
-  if (!live) return settle();
+  if (!live) {                 // a press that went nowhere: the file is chosen
+    choose(id);
+    return settle();
+  }
   // Redrawn from the order it was dropped into, which animates the row out of
   // the pointer's hand and into its slot, and then Python is told.
   const queued = state.items.filter((item) => item.state === "queued");
@@ -582,10 +635,10 @@ window.addEventListener("mousemove", (event) => {
 window.addEventListener("mouseup", () => { grip = null; });
 
 document.querySelectorAll("[data-mode]").forEach((cell) => {
-  cell.addEventListener("click", () => setMode(cell.dataset.mode));
+  cell.addEventListener("click", () => change({ mode: cell.dataset.mode }));
 });
 document.querySelectorAll("[data-factor]").forEach((cell) => {
-  cell.addEventListener("click", () => setFactor(Number(cell.dataset.factor)));
+  cell.addEventListener("click", () => change({ factor: Number(cell.dataset.factor) }));
 });
 ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
@@ -611,10 +664,8 @@ ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
 window.addEventListener("pywebviewready", async () => {
   const boot = await window.pywebview.api.boot();
-  setFactor(boot.factor);
-  setDevice(boot.device);
-  setSuffix(boot.suffix);
-  setMode(boot.mode);
+  change({ mode: boot.mode, factor: boot.factor,
+           device: boot.device, suffix: boot.suffix });
   write(boot.greeting);
 });
 

@@ -73,8 +73,10 @@ def output_for(source, mode, factor, suffix):
 
 
 def card(item, state):
-    """The part of a queued file the page draws a row from."""
-    return {"id": item["id"], "name": item["name"], "tag": item["tag"], "state": state}
+    """The part of a queued file the page draws a row from - its settings
+    included, because clicking the row brings them back up in the sidebar."""
+    return {"id": item["id"], "name": item["name"], "tag": item["tag"],
+            "state": state, "options": item["options"]}
 
 
 # A frameless window has no resize border either, and putting the native one
@@ -146,10 +148,12 @@ class Api:
             "greeting": "ready - drop videos, put them in order, then press start",
         }
 
-    def set_options(self, mode, factor, device, suffix):
-        """The options a file carries are the ones that were set when it was added."""
-        self._app.options = {"mode": mode, "factor": int(factor), "device": device,
-                             "suffix": suffix}
+    def set_options(self, item_id, mode, factor, device, suffix):
+        """Settings for one waiting file, or - with no file named - for the
+        files added next."""
+        self._app.configure(int(item_id or 0),
+                            {"mode": mode, "factor": int(factor), "device": device,
+                             "suffix": suffix})
 
     def browse(self):
         chosen = self._app.window.create_file_dialog(
@@ -253,7 +257,8 @@ class App:
         self.add(paths)
 
     def add(self, paths):
-        """Files join the back of the line; nothing runs until start is pressed."""
+        """Files join the back of the line, carrying the settings the sidebar
+        held as they arrived; nothing runs until start is pressed."""
         options = dict(self.options)
         sources = []
         for path in paths:
@@ -274,6 +279,22 @@ class App:
                     "source": source,
                     "options": options,
                 })
+            self.revision += 1
+        self.publish()
+
+    def configure(self, item_id, options):
+        """Settings belong to one file each: a waiting file named here takes
+        them, and with no file named they are what the files added next will
+        take. A file already being worked on keeps what it started with."""
+        if not item_id:
+            self.options = options
+            return
+        with self.lock:
+            item = next((one for one in self.pending if one["id"] == item_id), None)
+            if item is None:   # started, or dropped, since the page last looked
+                return
+            item["options"] = options
+            item["tag"] = name_tag(options["mode"], options["factor"], options["suffix"])
             self.revision += 1
         self.publish()
 

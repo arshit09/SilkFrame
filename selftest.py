@@ -131,6 +131,22 @@ def main():
         check("a suffix that cannot be a name falls back",
               gui.output_for(Path("a/clip.mp4"), "fps", 2, " ?? ").name == "clip.2x.mp4")
 
+        # every file carries its own settings: the page names the row it is
+        # showing, and names none of them for the files added next
+        window = gui.App()
+        window.add(["gui.py", "video.py"])
+        page = gui.Api(window)
+        page.set_options(2, "slowmo", 4, "cpu", "")
+        page.set_options(0, "fps", 8, "auto", "")
+        tags = [item["tag"] for item in window.pending]
+        check("settings given to one file leave the others alone",
+              tags == ["2x", "slowmo4x"], str(tags))
+        check("the settings a file carries reach the page",
+              window.snapshot()["items"][1]["options"]["device"] == "cpu")
+        window.add(["silkframe.py"])
+        check("a file added later takes the defaults as they now stand",
+              window.pending[-1]["tag"] == "8x", window.pending[-1]["tag"])
+
     # 11. a factor above two puts factor-1 new frames in every gap
     moving = work / "moving.mp4"
     out = work / "moving.4x.mp4"

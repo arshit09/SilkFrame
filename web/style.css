@@ -296,6 +296,13 @@ button { background: none; border: none; cursor: pointer; }
 
 .queue__row[data-state="queued"]:hover { background: var(--color-graphite); }
 
+/* The one the sidebar is set to. The only outlined surface in the window, so
+   that it reads apart from a row the pointer merely happens to be over. */
+.queue__row[data-chosen="true"] {
+  background: var(--color-graphite);
+  box-shadow: inset 0 0 0 1px var(--color-iron);
+}
+
 /* The one being worked on holds its place at the top and cannot be dragged. */
 .queue__row[data-state="running"] { cursor: default; background: #181818; }
 
@@ -463,6 +470,57 @@ button { background: none; border: none; cursor: pointer; }
 .side > * { flex: none; }         /* nothing shrinks: the column never scrolls */
 .side .caption { padding: var(--spacing-8) 0 var(--spacing-4); }
 .side .caption:first-child { padding-top: 0; }
+
+/* Whose settings these are: one waiting file, or the files added next. Named
+   rather than merely implied, because the same controls now mean either. */
+.scope {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: 8px 10px;
+  background: var(--color-carbon);
+  border-radius: var(--radius-cards);
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+}
+
+.scope[data-file="true"] { color: var(--color-chalk); }
+
+.scope__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Nothing to let go of while the settings are the ones new files take. */
+.scope[data-file="false"] .scope__clear { display: none; }
+
+.scope__clear {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-icons);
+  color: var(--color-iron);
+  transition: background 120ms linear, color 120ms linear;
+}
+
+.scope__clear svg {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.scope__clear:hover { background: var(--color-iron); color: var(--color-chalk); }
 
 /* One line for what the settings above add up to, and nothing more. */
 .note {
