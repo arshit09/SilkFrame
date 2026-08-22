@@ -638,6 +638,7 @@ const SWELL = 520;     // milliseconds the wave takes to rise once the work star
 const WAVE = 150;      // pixels from one crest of it to the next
 const PERIOD = 2400;   // milliseconds a crest takes to travel one wavelength
 const CREST = 5;       // pixels a dot rides either side of its slot
+const LOOSEN = 420;    // milliseconds the grid takes to come apart into drift
 
 // Out fast, in slow, and a little past the slot before it comes to rest.
 const ease = (t) => 1 + 1.7 * (t - 1) ** 3 + 0.7 * (t - 1) ** 2;
@@ -661,7 +662,7 @@ function spawn() {
   return {
     x: random(0, width), y: random(0, height),
     vx: Math.cos(angle) * pace, vy: Math.sin(angle) * pace,
-    fx: 0, fy: 0, slot: 0, spark: Math.random(),
+    fx: 0, fy: 0, slot: 0, settled: 0, spark: Math.random(),
   };
 }
 
@@ -805,13 +806,17 @@ function paint(now) {
   const secs = step / 1000;
   context.fillStyle = "#f3f3f3";
 
+  // A dot leaving the grid picks its drift up over the loosen instead of in one
+  // frame, so a stopped job lets the formation come apart rather than flinging
+  // it open.
+  const loose = Math.min(since / LOOSEN, 1);
+
   dots.forEach((dot) => {
-    let settled = 0;
     let lift = 0;
     if (formed) {
       const slot = slots[dot.slot];
-      settled = Math.max(0, Math.min((since - slot.delay) / SETTLE, 1));
-      const shift = ease(settled);
+      dot.settled = Math.max(0, Math.min((since - slot.delay) / SETTLE, 1));
+      const shift = ease(dot.settled);
       // Written back, so the drift picks up wherever the grid let go.
       dot.x = dot.fx + (slot.x - dot.fx) * shift;
       dot.y = dot.fy + (slot.y - dot.fy) * shift;
@@ -819,13 +824,15 @@ function paint(now) {
       // standing under. Off the slot rather than the dot, so a dot still on its
       // way in is not made to swim there.
       const phase = (slot.x + slot.y * 0.5) / WAVE - clock / PERIOD;
-      lift = Math.sin(phase * Math.PI * 2) * CREST * swell * settled;
+      lift = Math.sin(phase * Math.PI * 2) * CREST * swell * dot.settled;
     } else {
-      drift(dot, secs);
+      drift(dot, secs * loose);
+      // The light the grid was holding goes out over the same stretch.
+      dot.settled *= Math.exp(-step / (LOOSEN / 3));
     }
     // A slow band of light crosses the grid once it is standing still.
     const band = 0.5 + 0.5 * Math.sin((dot.x / Math.max(width, 1)) * Math.PI * 2 - clock * 0.0011);
-    context.globalAlpha = 0.14 + 0.20 * dot.spark + settled * (0.12 + 0.20 * band);
+    context.globalAlpha = 0.14 + 0.20 * dot.spark + dot.settled * (0.12 + 0.20 * band);
     context.beginPath();
     context.arc(dot.x, dot.y + lift, 1.2, 0, Math.PI * 2);
     context.fill();
