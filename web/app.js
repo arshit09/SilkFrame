@@ -9,14 +9,18 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   drop: $("drop"),
+  queue: $("queue"),
+  count: $("count"),
   choose: $("choose"),
+  chooseMore: $("choose-more"),
   note: $("note"),
   suffix: $("suffix"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
   log: $("log"),
-  cancel: $("cancel"),
+  start: $("start"),
+  stop: $("stop"),
   close: $("close"),
   toolbar: $("toolbar"),
   winControls: $("wincontrols"),
@@ -27,6 +31,7 @@ const ui = {
 
 const state = {
   mode: "fps", factor: 2, device: "auto", suffix: "", busy: false,
+  items: [], running: false, revision: 0,
 };
 
 // ----------------------------------------------------------------- listboxes
@@ -117,7 +122,7 @@ deviceSelect.fill([["auto", "Auto"]], "auto");
 // it is given and is cut off with an ellipsis. Hovering one shows the whole of
 // it - and only when it really was cut, so nothing ever pops up over text that
 // can already be read in full.
-const CLIPPED = ".select__trigger, .select__item, .statusbar__text";
+const CLIPPED = ".select__trigger, .select__item, .statusbar__text, .queue__name";
 
 const tip = document.createElement("div");
 tip.className = "tip";
@@ -218,6 +223,235 @@ function fillDevices(devices) {
   setDevice(deviceSelect.value || "auto");
 }
 
+// --------------------------------------------------------------- the queue
+
+/* Python holds the real line of files; this draws it, and lets it be dragged
+ * into a different order. Every change - one arriving, one starting, one being
+ * dragged past another - moves rows that were already on screen, so each redraw
+ * measures where they were, puts them where they now belong, and hands the
+ * browser the difference to animate away. */
+
+const rows = new Map();   // id -> the row drawn for it
+const LIFT = 4;           // pixels of movement before a press counts as a drag
+const LEAVING = 260;      // milliseconds a row takes to fade out of the list
+const EDGE = 30;          // how near the end of the list a drag starts scrolling it
+const CREEP = 11;         // pixels a frame it scrolls by while held right at the end
+
+let held = null;          // the row under the pointer, and where it started
+let waiting = null;       // a snapshot that arrived while a drag was in hand
+
+function build(item) {
+  const row = document.createElement("div");
+  row.className = "queue__row";
+  row.dataset.id = String(item.id);
+  row.dataset.entering = "true";   // its first painted state, faded and above
+  row.innerHTML = `
+    <div class="queue__fill"></div>
+    <svg class="queue__grip" viewBox="0 0 10 16" aria-hidden="true">
+      <circle cx="3.5" cy="4.5" r="1"></circle><circle cx="6.5" cy="4.5" r="1"></circle>
+      <circle cx="3.5" cy="8" r="1"></circle><circle cx="6.5" cy="8" r="1"></circle>
+      <circle cx="3.5" cy="11.5" r="1"></circle><circle cx="6.5" cy="11.5" r="1"></circle>
+    </svg>
+    <span class="queue__place"></span>
+    <span class="queue__name"></span>
+    <span class="queue__tag meta"></span>
+    <button class="queue__kill" type="button" aria-label="Remove from the queue">
+      <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1l-8 8"></path></svg>
+    </button>`;
+  row.querySelector(".queue__kill").addEventListener("click", (event) => {
+    event.stopPropagation();
+    forget(item.id);
+  });
+  return row;
+}
+
+function dress(row, item, place) {
+  // A file that has just started over: its bar begins empty again.
+  if (row.dataset.state !== item.state) row.querySelector(".queue__fill").style.width = "0";
+  row.dataset.state = item.state;
+  row.querySelector(".queue__place").textContent = place ? String(place) : "";
+  row.querySelector(".queue__name").textContent = item.name;
+  row.querySelector(".queue__tag").textContent = item.tag;
+}
+
+// A row on its way out is lifted out of the flow first, so the rows below it
+// can close the gap while it is still fading.
+function leave(row) {
+  const box = row.getBoundingClientRect();
+  const frame = ui.queue.getBoundingClientRect();
+  rows.delete(Number(row.dataset.id));
+  row.dataset.leaving = "true";
+  row.style.transition = "";
+  row.style.position = "absolute";
+  row.style.top = `${box.top - frame.top + ui.queue.scrollTop}px`;
+  row.style.left = `${box.left - frame.left}px`;
+  row.style.width = `${box.width}px`;
+  requestAnimationFrame(() => { row.dataset.gone = "true"; });
+  setTimeout(() => row.remove(), LEAVING);
+}
+
+const standing = () => [...ui.queue.children].filter((row) => !row.dataset.leaving);
+
+function render(items, running) {
+  state.items = items;
+  state.running = running;
+
+  const before = new Map();
+  standing().forEach((row) => {
+    before.set(row, row.getBoundingClientRect().top);
+    row.style.transition = "none";   // whatever a drag left behind is not the answer
+    row.style.transform = "";
+  });
+
+  const kept = new Set(items.map((item) => String(item.id)));
+  standing().forEach((row) => { if (!kept.has(row.dataset.id)) leave(row); });
+
+  const fresh = [];
+  let place = 0;
+  items.forEach((item) => {
+    let row = rows.get(item.id);
+    if (!row) {
+      row = build(item);
+      rows.set(item.id, row);
+      fresh.push(row);
+    }
+    dress(row, item, item.state === "queued" ? (place += 1) : 0);
+    ui.queue.append(row);            // already a child: this only moves it
+  });
+
+  // Every row that has moved is put back where it was, the browser is made to
+  // look at it there, and then it is let go of - which is the animation.
+  standing().forEach((row) => {
+    const was = before.get(row);
+    if (was === undefined) return;
+    const gap = was - row.getBoundingClientRect().top;
+    if (Math.abs(gap) > 0.5) row.style.transform = `translateY(${gap}px)`;
+  });
+  void ui.queue.offsetHeight;
+  standing().forEach((row) => { row.style.transition = ""; row.style.transform = ""; });
+  fresh.forEach((row) => { delete row.dataset.entering; });
+
+  ui.drop.dataset.empty = String(items.length === 0);
+  ui.count.textContent = items.length
+    ? `${items.length} ${items.length === 1 ? "video" : "videos"}`
+    : "";
+  ui.start.hidden = running;
+  ui.stop.hidden = !running;
+  ui.start.disabled = items.length === 0;
+}
+
+// Python is the one that knows the order; a snapshot that predates a move made
+// here would put it back, so anything older than the last change is ignored.
+function accept(message) {
+  if (held) { waiting = message; return; }
+  if (message.revision < state.revision) return;
+  state.revision = message.revision;
+  render(message.items, message.running);
+}
+
+function settle() {
+  const message = waiting;
+  waiting = null;
+  if (message) accept(message);
+}
+
+function forget(id) {
+  state.revision += 1;
+  render(state.items.filter((item) => item.id !== id), state.running);
+  window.pywebview.api.remove(id);
+}
+
+// ------------------------------------------------------------ dragging a row
+
+// The row under the pointer follows it, and the rows it passes step aside by
+// exactly one place each. Pointer events rather than HTML drag and drop,
+// because a drag started in here must not read as a file arriving from outside.
+function slide() {
+  held.line.forEach((row, index) => {
+    if (row === held.row) return;
+    let shift = 0;
+    if (held.to > held.from && index > held.from && index <= held.to) shift = -held.step;
+    if (held.to < held.from && index >= held.to && index < held.from) shift = held.step;
+    row.style.transform = shift ? `translateY(${shift}px)` : "";
+  });
+}
+
+// How far the row has come since it was picked up, counted in the list's own
+// coordinates rather than the window's: a list that scrolls under a pointer
+// that has not moved has still carried the row somewhere new.
+function track() {
+  const dy = (held.at - held.y) + (ui.queue.scrollTop - held.scroll);
+  const to = Math.max(0, Math.min(held.line.length - 1,
+                                  held.from + Math.round(dy / held.step)));
+  if (to !== held.to) { held.to = to; slide(); }
+  held.row.style.transform = `translateY(${dy}px)`;
+}
+
+// A queue longer than the panel would otherwise be impossible to drag across,
+// so holding a row near either end scrolls the rest of the list past it.
+function creep() {
+  if (!held || !held.live) return;
+  const box = ui.queue.getBoundingClientRect();
+  const down = held.at - box.top;
+  let by = 0;
+  if (down < EDGE) by = -CREEP * Math.min(1, (EDGE - down) / EDGE);
+  else if (down > box.height - EDGE) by = CREEP * Math.min(1, (down - box.height + EDGE) / EDGE);
+  if (by) {
+    const was = ui.queue.scrollTop;
+    ui.queue.scrollTop += by;
+    if (ui.queue.scrollTop !== was) track();   // it moved, so the row is elsewhere
+  }
+  requestAnimationFrame(creep);
+}
+
+ui.queue.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || event.target.closest(".queue__kill")) return;
+  const row = event.target.closest(".queue__row");
+  if (!row || row.dataset.state !== "queued") return;
+  const line = [...ui.queue.querySelectorAll('.queue__row[data-state="queued"]')];
+  if (line.length < 2) return;              // nothing to reorder it past
+  const at = line.indexOf(row);
+  held = { row, line, from: at, to: at, pointer: event.pointerId,
+           y: event.clientY, at: event.clientY, scroll: ui.queue.scrollTop,
+           step: 0, live: false };
+  ui.queue.setPointerCapture(event.pointerId);
+});
+
+ui.queue.addEventListener("pointermove", (event) => {
+  if (!held || event.pointerId !== held.pointer) return;
+  held.at = event.clientY;
+  if (!held.live) {
+    if (Math.abs(held.at - held.y) < LIFT) return;   // a click is not a drag
+    held.live = true;
+    held.row.dataset.held = "true";
+    const tops = held.line.map((row) => row.getBoundingClientRect().top);
+    held.step = tops[1] - tops[0];          // one row and the gap under it
+    requestAnimationFrame(creep);
+  }
+  track();
+});
+
+function release() {
+  if (!held) return;
+  const { row, from, to, live } = held;
+  const id = Number(row.dataset.id);
+  held = null;
+  delete row.dataset.held;
+  if (!live) return settle();
+  // Redrawn from the order it was dropped into, which animates the row out of
+  // the pointer's hand and into its slot, and then Python is told.
+  const queued = state.items.filter((item) => item.state === "queued");
+  const rest = state.items.filter((item) => item.state !== "queued");
+  queued.splice(to, 0, ...queued.splice(from, 1));
+  state.revision += 1;
+  render([...rest, ...queued], state.running);
+  if (to !== from) window.pywebview.api.move(id, to);
+  settle();
+}
+
+ui.queue.addEventListener("pointerup", release);
+ui.queue.addEventListener("pointercancel", release);
+
 // -------------------------------------------------------------------- output
 
 function write(text) {
@@ -232,6 +466,10 @@ function setProgress(done, total) {
   const fraction = total > 0 ? Math.min(done / total, 1) : 0;
   ui.fill.style.width = `${fraction * 100}%`;
   ui.percent.textContent = total > 0 ? `${done} / ${total} frames` : "";
+  // The same figure again, as a wash filling the row it belongs to.
+  const item = state.items.find((one) => one.state === "running");
+  const row = item && rows.get(item.id);
+  if (row) row.querySelector(".queue__fill").style.width = `${fraction * 100}%`;
 }
 
 const app = {
@@ -247,14 +485,16 @@ const app = {
       case "progress":
         setProgress(message.done, message.total);
         break;
+      case "queue":
+        accept(message);
+        break;
       case "summary":
         ui.status.textContent = message.text;
         ui.status.dataset.state = message.failed ? "failed" : "done";
-        ui.close.hidden = false;
+        ui.close.hidden = state.items.length > 0;   // still work waiting: not an ending
         break;
       case "busy":
         state.busy = message.value;
-        ui.cancel.disabled = !message.value;
         if (message.value) {
           ui.close.hidden = true;
           ui.status.dataset.state = "running";
@@ -275,12 +515,21 @@ window.app = app;
 
 // ------------------------------------------------------------------- wiring
 
-ui.choose.addEventListener("click", (event) => {
+const browse = (event) => {
   event.stopPropagation();
   window.pywebview.api.browse();
+};
+
+ui.choose.addEventListener("click", browse);
+ui.chooseMore.addEventListener("click", browse);
+// The panel itself opens the picker too, except over the list, where a click
+// belongs to the row under it.
+ui.drop.addEventListener("click", (event) => {
+  if (event.target.closest(".queue")) return;
+  window.pywebview.api.browse();
 });
-ui.drop.addEventListener("click", () => window.pywebview.api.browse());
-ui.cancel.addEventListener("click", () => window.pywebview.api.cancel());
+ui.start.addEventListener("click", () => window.pywebview.api.start());
+ui.stop.addEventListener("click", () => window.pywebview.api.stop());
 ui.close.addEventListener("click", () => window.pywebview.api.close());
 
 // The toolbar is the title bar. pywebview starts a window drag from any

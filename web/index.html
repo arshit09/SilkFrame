@@ -35,8 +35,9 @@
       <!-- A div, not a section: pywebview finds an element's events two
            prototypes up, which is HTMLElement for a div but only Element for a
            section, and Element carries no ondrop - so a section here silently
-           loses the drop. -->
-      <div class="drop" id="drop">
+           loses the drop. The queue lives inside it rather than beside it, so
+           the whole panel stays one drop target however full it is. -->
+      <div class="drop" id="drop" data-empty="true">
         <canvas class="drop__dots" id="dots"></canvas>
         <div class="drop__body">
           <svg class="icon icon--gold icon--lg" viewBox="0 0 32 32" aria-hidden="true">
@@ -45,6 +46,12 @@
           </svg>
           <p class="drop__title">Drop videos here</p>
           <button class="pill" id="choose" type="button">Choose files</button>
+        </div>
+        <div class="queue" id="queue"></div>
+        <div class="drop__more">
+          <span class="meta" id="count"></span>
+          <span class="meta">drag to reorder - drop more, or</span>
+          <button class="drop__link" id="choose-more" type="button">choose files</button>
         </div>
       </div>
 
@@ -106,7 +113,8 @@
     <div class="statusbar__track"><div class="statusbar__fill" id="fill"></div></div>
     <span class="statusbar__text" id="status"></span>
     <span class="meta" id="percent"></span>
-    <button class="ghost" id="cancel" type="button" disabled>Cancel</button>
+    <button class="pill" id="start" type="button" disabled>Start</button>
+    <button class="ghost" id="stop" type="button" hidden>Stop</button>
     <button class="pill" id="close" type="button" hidden>Close</button>
   </footer>
 

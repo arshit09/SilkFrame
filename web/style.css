@@ -45,6 +45,9 @@
   --statusbar-height: 52px;
   --side-width: 288px;
   --log-height: 186px;
+
+  --row-height: 40px;
+  --row-gap: 6px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -189,17 +192,22 @@ button { background: none; border: none; cursor: pointer; }
   border-radius: var(--radius-cards);
   background: var(--color-carbon);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow 120ms linear;
 }
 
-/* The edge is drawn only when it means something: a ring under the pointer, a
-   brighter one with a file held over it. */
-.drop:hover { box-shadow: inset 0 0 0 1px var(--color-graphite); }
+/* The edge is drawn only when it means something: a ring under the pointer
+   while the panel is still a target, a brighter one with a file held over it. */
+.drop[data-empty="true"]:hover { box-shadow: inset 0 0 0 1px var(--color-graphite); }
 .drop[data-dragging="true"] { box-shadow: inset 0 0 0 1px var(--color-signal-white); }
+
+/* With files in it the panel is a list, not a button. */
+.drop[data-empty="false"] { cursor: default; }
+.drop[data-empty="false"] .drop__body { display: none; }
+.drop[data-empty="true"] .queue,
+.drop[data-empty="true"] .drop__more { display: none; }
 
 .drop__dots {
   position: absolute;
@@ -210,6 +218,7 @@ button { background: none; border: none; cursor: pointer; }
 
 .drop__body {
   position: relative;
+  margin: auto;                    /* centred in the column while it is alone */
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -226,6 +235,179 @@ button { background: none; border: none; cursor: pointer; }
   line-height: var(--leading-heading-xs);
   color: var(--color-chalk);
 }
+
+/* The line under the list: what is in it, and how to add to it. */
+.drop__more {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-8);
+  padding: var(--spacing-4) var(--spacing-16) var(--spacing-12);
+  cursor: pointer;
+}
+
+.drop__more .meta { color: var(--color-iron); }
+
+.drop__link {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.drop__link:hover { color: var(--color-chalk); }
+
+/* ------------------------------------------------------------------- queue */
+
+/* One row per file, in the order they will run. A row is dragged by anywhere
+   on it, and the rows it passes step aside a place at a time. */
+
+.queue {
+  position: relative;              /* a row on its way out is placed against this */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--spacing-12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--row-gap);
+}
+
+.queue__row {
+  position: relative;
+  flex: none;
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  padding: 0 var(--spacing-8) 0 var(--spacing-4);
+  border-radius: 6px;
+  background: #141414;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 200ms linear, background 120ms linear;
+}
+
+.queue__row[data-state="queued"]:hover { background: var(--color-graphite); }
+
+/* The one being worked on holds its place at the top and cannot be dragged. */
+.queue__row[data-state="running"] { cursor: default; background: #181818; }
+
+/* Lifted out of the list while the pointer has hold of it: it must follow the
+   pointer exactly, so nothing about it is allowed to ease. */
+.queue__row[data-held="true"] {
+  transition: none;
+  cursor: grabbing;
+  z-index: 1;
+  background: var(--color-graphite);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
+}
+
+.queue__row[data-entering="true"] { opacity: 0; transform: translateY(-8px); }
+.queue__row[data-gone="true"] { opacity: 0; transform: translateX(14px); }
+
+/* How far through this file is, as a wash rather than a second bar. */
+.queue__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: rgba(243, 243, 243, 0.06);
+  transition: width 160ms linear;
+  pointer-events: none;
+}
+
+.queue__grip {
+  position: relative;
+  flex: none;
+  width: 10px;
+  height: 16px;
+  fill: var(--color-iron);
+}
+
+.queue__row:hover .queue__grip { fill: var(--color-smoke); }
+
+/* Hidden rather than dropped, so every row keeps the same columns. */
+.queue__row[data-state="running"] .queue__grip,
+.queue__row[data-state="running"] .queue__kill { visibility: hidden; }
+
+.queue__place {
+  position: relative;
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-family: var(--font-input);
+  font-size: 12px;
+  letter-spacing: -0.0220em;
+  color: var(--color-iron);
+}
+
+.queue__row[data-state="running"] .queue__place::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: var(--radius-icons);
+  background: var(--color-chalk);
+  animation: beat 1.6s ease-in-out infinite;
+}
+
+@keyframes beat { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+.queue__name {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--color-ash);
+}
+
+.queue__row[data-state="running"] .queue__name { color: var(--color-chalk); }
+
+.queue__tag {
+  position: relative;
+  flex: none;
+  color: var(--color-iron);
+}
+
+.queue__kill {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-icons);
+  color: var(--color-iron);
+  opacity: 0;
+  transition: opacity 120ms linear, background 120ms linear, color 120ms linear;
+}
+
+.queue__kill svg {
+  width: 8px;
+  height: 8px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.queue__row:hover .queue__kill,
+.queue__kill:focus-visible { opacity: 1; }
+
+.queue__kill:hover { background: var(--color-iron); color: var(--color-chalk); }
 
 /* ---------------------------------------------------------------- log pane */
 
@@ -507,6 +689,11 @@ button:focus-visible, .name:focus-within {
   gap: var(--spacing-16);
   padding: 0 var(--spacing-16);
 }
+
+/* Start and stop stand in the same place and are never both here, so they are
+   given the same width and the bar does not shift as one replaces the other. */
+.statusbar .pill,
+.statusbar .ghost { min-width: 96px; justify-content: center; }
 
 /* The progress bar is the top edge of the status bar, so it never takes a row
    of its own and never moves anything when it appears. */

@@ -30,16 +30,20 @@ to end.
 ## The window
 
 `python gui.py` (or `pythonw gui.py` for no console) opens a drop target. Drop
-one or more videos and each is written beside its source, as `name.4x.mp4` or
+one or more videos and they line up in it, one row each, in the order they will
+run; drag a row to move it, click the cross to drop it, and press start when the
+order is right. Each file is written beside its source, as `name.4x.mp4` or
 `name.slowmo.mp4`, after whatever the sidebar was set to when the file was
 added - or after the suffix typed there, if one was. The sidebar picks the
 mode, how many frames come out per frame in, and which device does the work;
 the device list fills itself a second or two after the window opens, because
-naming the GPUs means loading torch. Batches run one
-at a time, more files can be dropped while a
-job is running, a file that fails is logged and the rest carry on, and cancel
-abandons the whole batch. The front end is plain HTML, CSS and JavaScript in
-`web/`, rendered by pywebview in a native window.
+naming the GPUs means loading torch. Files run one at a time, more can be
+dropped and the ones still waiting reordered while a job is running, and a file
+that fails is logged and the rest carry on. Stop is the pair to start: the file
+being worked on is abandoned and goes back to the head of the line, everything
+behind it keeps its place, and start picks the same order back up. The front end
+is plain HTML, CSS and JavaScript in `web/`, rendered by pywebview in a native
+window.
 
 ## How it works
 

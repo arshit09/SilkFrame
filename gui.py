@@ -4,8 +4,8 @@
     python gui.py          (or pythonw gui.py for no console window)
 
 The interface is plain HTML, CSS and JavaScript in web/, rendered by pywebview
-in a native window. Drop videos on it and each one is written next to its
-source.
+in a native window. Drop videos on it, put them in the order you want them, and
+press start; each one is written next to its source.
 """
 
 import ctypes
@@ -62,10 +62,19 @@ def auto_tag(mode, factor):
     return f"{factor}x"
 
 
+def name_tag(mode, factor, suffix):
+    """The part of the output name that says what was done to the file."""
+    return NOT_IN_A_NAME.sub("", suffix).strip(" .") or auto_tag(mode, factor)
+
+
 def output_for(source, mode, factor, suffix):
     container = source.suffix if source.suffix.lower() in KEEP_CONTAINER else ".mp4"
-    tag = NOT_IN_A_NAME.sub("", suffix).strip(" .") or auto_tag(mode, factor)
-    return source.with_name(f"{source.stem}.{tag}{container}")
+    return source.with_name(f"{source.stem}.{name_tag(mode, factor, suffix)}{container}")
+
+
+def card(item, state):
+    """The part of a queued file the page draws a row from."""
+    return {"id": item["id"], "name": item["name"], "tag": item["tag"], "state": state}
 
 
 # A frameless window has no resize border either, and putting the native one
@@ -134,7 +143,7 @@ class Api:
             "factor": self._app.options["factor"],
             "device": self._app.options["device"],
             "suffix": self._app.options["suffix"],
-            "greeting": "ready - drop a video, or choose one from disk",
+            "greeting": "ready - drop videos, put them in order, then press start",
         }
 
     def set_options(self, mode, factor, device, suffix):
@@ -147,8 +156,18 @@ class Api:
             webview.FileDialog.OPEN, allow_multiple=True, file_types=VIDEO_TYPES)
         self._app.add(chosen or [])
 
-    def cancel(self):
-        self._app.cancel()
+    def start(self):
+        self._app.start()
+
+    def stop(self):
+        self._app.stop()
+
+    def move(self, item_id, index):
+        """One waiting file to a new place in the line."""
+        self._app.move(int(item_id), int(index))
+
+    def remove(self, item_id):
+        self._app.remove(int(item_id))
 
     def minimize(self):
         self._app.window.minimize()
@@ -168,12 +187,19 @@ class App:
         self.window = None
         self.frame = None
         self.messages = queue.Queue()
-        self.jobs = queue.Queue()
+        # The line of files is a plain list rather than a queue.Queue, because
+        # the page reads it, reorders it and takes things out of the middle of
+        # it; the condition is what the worker sleeps on between jobs.
+        self.lock = threading.Condition()
+        self.pending = []        # waiting, in the order they will run
+        self.active = None       # what the worker has in hand
+        self.running = False     # start pressed, stop not yet
+        self.revision = 0        # so a snapshot in flight cannot undo a newer move
+        self.numbered = 0        # the ids the page holds its rows by
         self.process = None
         self.cancelled = threading.Event()
         self.loaded = threading.Event()
         self.current = ""
-        self.done = 0
         self.results = []
         self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": ""}
 
@@ -182,7 +208,7 @@ class App:
     def attach(self, window):
         self.window = window
         window.events.loaded += self.on_loaded
-        window.events.closing += self.cancel
+        window.events.closing += self.stop
         threading.Thread(target=self.worker, daemon=True).start()
         threading.Thread(target=self.pump, daemon=True).start()
         threading.Thread(target=self.probe_devices, daemon=True).start()
@@ -227,28 +253,81 @@ class App:
         self.add(paths)
 
     def add(self, paths):
+        """Files join the back of the line; nothing runs until start is pressed."""
         options = dict(self.options)
+        sources = []
         for path in paths:
             source = Path(path)
             if source.is_file():
-                self.jobs.put((source, options))
-                self.push(kind="log", text=f"queued {source.name}")
+                sources.append(source)
             else:
                 self.push(kind="log", text=f"skipped {source.name}: not a file")
+        if not sources:
+            return
+        with self.lock:
+            for source in sources:
+                self.numbered += 1
+                self.pending.append({
+                    "id": self.numbered,
+                    "name": source.name,
+                    "tag": name_tag(options["mode"], options["factor"], options["suffix"]),
+                    "source": source,
+                    "options": options,
+                })
+            self.revision += 1
+        self.publish()
 
-    def cancel(self):
-        self.cancelled.set()
-        dropped = 0
-        while True:  # cancel means the whole batch, not just the current file
-            try:
-                self.jobs.get_nowait()
-                dropped += 1
-            except queue.Empty:
-                break
-        if dropped:
-            self.push(kind="log",
-                      text=f"removed {dropped} video{'s' if dropped > 1 else ''} from the queue")
+    # -------------------------------------------------------------- the queue
+
+    def start(self):
+        with self.lock:
+            if self.running or not self.pending:
+                return
+            self.running = True
+            self.results = []      # a run counts from the press that began it
+            self.revision += 1
+            self.lock.notify_all()
+        self.publish()
+
+    def stop(self):
+        """The pair to start: the file being worked on is abandoned and goes
+        back to the head of the line, and everything behind it keeps its place,
+        so start picks the same order back up."""
+        with self.lock:
+            self.running = False
+            self.cancelled.set()
+            self.revision += 1
         self.kill(self.process)
+        self.publish()
+
+    def move(self, item_id, index):
+        with self.lock:
+            at = next((n for n, item in enumerate(self.pending)
+                       if item["id"] == item_id), None)
+            if at is not None:
+                item = self.pending.pop(at)
+                self.pending.insert(max(0, min(index, len(self.pending))), item)
+            # Bumped even when the file has since started, so a move that came
+            # too late is answered with the order that really holds.
+            self.revision += 1
+        self.publish()
+
+    def remove(self, item_id):
+        with self.lock:
+            self.pending = [item for item in self.pending if item["id"] != item_id]
+            self.revision += 1
+        self.publish()
+
+    def snapshot(self):
+        """The whole line, in order, as the page draws it."""
+        with self.lock:
+            items = [card(self.active, "running")] if self.active else []
+            items += [card(item, "queued") for item in self.pending]
+            return {"kind": "queue", "revision": self.revision,
+                    "running": self.running, "items": items}
+
+    def publish(self):
+        self.push(**self.snapshot())
 
     @staticmethod
     def kill(process):
@@ -263,34 +342,52 @@ class App:
 
     def worker(self):
         while True:
-            source, options = self.jobs.get()
-            self.cancelled.clear()
-            self.done += 1
-            self.current = source.name
+            with self.lock:
+                while not (self.running and self.pending):
+                    self.lock.wait()
+                item = self.pending.pop(0)
+                self.active = item
+                self.current = item["name"]
+                self.cancelled.clear()
+                self.revision += 1
             self.push(kind="busy", value=True)
+            self.publish()
             try:
-                self.run(source, options)
-                self.results.append((source.name, None))
-            except Exception as error:  # one bad file must not stop the batch
-                self.push(kind="log", text=f"{source.name}: {error}")
-                self.results.append((source.name, str(error)))
-            if not self.jobs.qsize():
+                self.run(item)
+                failure = None
+            except Exception as error:  # one bad file must not stop the rest
+                failure = str(error)
+            # A stop reaches the job as a failure; anything else really did fail.
+            stopped = failure is not None and self.cancelled.is_set()
+            if failure and not stopped:
+                self.push(kind="log", text=f"{item['name']}: {failure}")
+            with self.lock:
+                self.active = None
+                if stopped:
+                    self.pending.insert(0, item)   # unfinished, so still waiting
+                else:
+                    self.results.append((item["name"], failure))
+                idle = not (self.running and self.pending)
+                if idle:
+                    self.running = False
+                    report = self.summary(stopped, len(self.pending))
+                self.revision += 1
+            self.publish()
+            if idle:
                 self.push(kind="busy", value=False)
-                text, failed = self.summary()
-                self.push(kind="summary", text=text, failed=failed)
-                self.results = []
-                self.done = 0
+                self.push(kind="summary", text=report[0], failed=report[1])
 
-    def run(self, source, options):
-        destination = output_for(source, options["mode"], options["factor"],
+    def run(self, item):
+        options = item["options"]
+        destination = output_for(item["source"], options["mode"], options["factor"],
                                  options["suffix"])
         self.announce("starting")
-        self.interpolate(source, destination, options)
+        self.interpolate(item["source"], destination, options)
         self.push(kind="log", text=f"done -> {destination}")
 
     def interpolate(self, source, destination, options):
-        if self.cancelled.is_set():  # cancelled before the process was started
-            raise RuntimeError("cancelled")
+        if self.cancelled.is_set():  # stopped before the process was started
+            raise RuntimeError("stopped")
         command = worker_command(str(source), "-o", str(destination),
                                  "--mode", options["mode"],
                                  "--factor", str(options["factor"]),
@@ -300,7 +397,7 @@ class App:
             command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             cwd=str(SILKFRAME.parent), env=environment, creationflags=NO_WINDOW,
         )
-        if self.cancelled.is_set():  # cancel arrived before the process existed to kill
+        if self.cancelled.is_set():  # stop arrived before the process existed to kill
             self.kill(self.process)
         pending = ""
         while chunk := self.process.stderr.read1(4096):
@@ -316,33 +413,33 @@ class App:
         if code != 0:
             if self.cancelled.is_set():
                 destination.unlink(missing_ok=True)
-                raise RuntimeError("cancelled")
+                raise RuntimeError("stopped")
             raise RuntimeError(f"silkframe exited with code {code}")
 
-    def summary(self):
-        """What to leave on screen once the queue is empty."""
+    def summary(self, stopped, left):
+        """What to leave on screen once the worker has nothing left to do."""
         total = len(self.results)
         failed = [name for name, error in self.results if error]
         finished = total - len(failed)
         videos = "video" if total == 1 else "videos"
-        if self.cancelled.is_set():  # the stopped file is not a failure worth naming
-            return f"Cancelled - {finished} of {total} {videos} finished", False
-        if failed:
-            text = f"Done - {total} {videos}: {finished} finished, {len(failed)} failed"
-        else:
-            text = f"Done - {total} {videos} finished"
+        if stopped:  # the file that was stopped is waiting again, not lost
+            waiting = f", {left} still queued" if left else ""
+            return f"Stopped - {finished} finished{waiting}", False
         if failed:
             named = ", ".join(failed[:2])
             if len(failed) > 2:
                 named += f" and {len(failed) - 2} more"
-            text += f" ({named})"
-        return text, bool(failed)
+            return (f"Done - {total} {videos}: {finished} finished, "
+                    f"{len(failed)} failed ({named})"), True
+        return f"Done - {total} {videos} finished", False
 
     def announce(self, action):
-        """The batch total is read fresh, so files dropped mid run are counted."""
+        """The totals are read fresh, so files added mid run are counted."""
+        with self.lock:
+            position = len(self.results) + 1
+            total = position + len(self.pending)
         self.push(kind="status",
-                  text=f"{self.current}  ({self.done} of {self.done + self.jobs.qsize()})"
-                       f"  -  {action}")
+                  text=f"{self.current}  ({position} of {total})  -  {action}")
 
     def report(self, line):
         """Progress lines drive the bar; everything else goes to the log."""
