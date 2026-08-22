@@ -127,16 +127,21 @@ def main():
         # No window: App only needs one to paint, and nothing here paints.
         app = gui.App()
         check("slowmo output is named apart from the fps one",
-              gui.output_for(Path("a/clip.mp4"), "slowmo", 2).name == "clip.slowmo.mp4")
+              gui.output_for(Path("a/clip.mp4"), "slowmo", 2, "").name == "clip.slowmo.mp4")
         check("the factor reaches the output name",
-              gui.output_for(Path("a/clip.mp4"), "fps", 4).name == "clip.4x.mp4")
+              gui.output_for(Path("a/clip.mp4"), "fps", 4, "").name == "clip.4x.mp4")
+        check("a typed suffix replaces the automatic one",
+              gui.output_for(Path("a/clip.mp4"), "fps", 4, "final").name == "clip.final.mp4")
+        check("a suffix that cannot be a name falls back",
+              gui.output_for(Path("a/clip.mp4"), "fps", 2, " ?? ").name == "clip.2x.mp4")
         here = os.path.splitdrive(work)[0]
         other = next((d for d, free in gui.drives() if d != here and free > 5 * 2**30), None)
         if other:
             source = work / "staged.mp4"
             shutil.copy2(work / "moving.mp4", source)
             before = set(Path(other + os.sep).iterdir())
-            app.run(source, {"mode": "fps", "factor": 2, "device": "auto", "drive": other})
+            app.run(source, {"mode": "fps", "factor": 2, "device": "auto",
+                             "suffix": "", "drive": other})
             check("staging puts the result back beside the source",
                   (work / "staged.2x.mp4").exists())
             check("staging leaves nothing on the fast drive",

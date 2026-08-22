@@ -13,8 +13,6 @@
   --color-signal-white: #ffffff;
   --color-compass-gold: #6f6759;
   --color-card-slate: #3b3d45;
-  --color-pulse-green: #98ff38;
-  --color-badge: #1a1a1a;
 
   /* Inter is the first substitute the brief names, but it is left out on
      purpose: a common Windows install registers both its faces under the one
@@ -45,7 +43,7 @@
 
   --toolbar-height: 48px;
   --statusbar-height: 52px;
-  --side-width: 304px;
+  --side-width: 288px;
   --log-height: 186px;
 }
 
@@ -67,7 +65,7 @@ body {
   user-select: none;               /* chrome, not a document; the log opts back in */
 }
 
-button, select { font: inherit; color: inherit; }
+button, input { font: inherit; color: inherit; }
 button { background: none; border: none; cursor: pointer; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -122,7 +120,6 @@ button { background: none; border: none; cursor: pointer; }
   align-items: center;
   gap: var(--spacing-12);
   padding: 0 var(--spacing-16);
-  border-bottom: 1px solid var(--color-graphite);
 }
 
 .toolbar__title {
@@ -130,44 +127,57 @@ button { background: none; border: none; cursor: pointer; }
   color: var(--color-chalk);
 }
 
-.toolbar__meta {
-  font-family: var(--font-input);
-  font-size: 13px;
-  letter-spacing: -0.0220em;
-  color: var(--color-smoke);
-  padding-left: var(--spacing-12);
-  border-left: 1px solid var(--color-graphite);
-}
-
 .toolbar__spacer { flex: 1; }
 
-.badge {
-  display: inline-flex;
+/* The window is frameless, so the toolbar is the title bar: it drags the
+   window through .pywebview-drag-region, and these three stand in for the
+   system buttons Windows is no longer drawing. */
+.wincontrols {
+  display: flex;
+  align-self: stretch;
+  margin-right: calc(var(--spacing-16) * -1);
+}
+
+.wincontrol {
+  width: 44px;
+  display: flex;
   align-items: center;
-  gap: var(--spacing-8);
-  background: var(--color-badge);
-  border: 1px solid var(--color-graphite);
-  border-radius: var(--radius-tags);
-  padding: 6px 12px;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  justify-content: center;
   color: var(--color-smoke);
-  white-space: nowrap;
 }
 
-.badge__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-icons);
-  border: 1px solid var(--color-iron);
-  flex: none;
+.wincontrol svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
 }
 
-.badge[data-live="true"] .badge__dot {
-  background: var(--color-pulse-green);
-  border-color: var(--color-pulse-green);
+.wincontrol:hover {
+  background: var(--color-graphite);
+  color: var(--color-chalk);
 }
+
+.wincontrol--close:hover {
+  background: #c42b1c;                 /* the one red Windows itself uses here */
+  color: var(--color-signal-white);
+}
+
+/* ------------------------------------------------------------------- grips */
+
+/* The resize border, drawn by nobody: six pixels of nothing over every edge,
+   carrying the cursor that says which way this one goes. */
+.grip { position: fixed; z-index: 2; }
+
+.grip--n  { top: 0; left: 6px; right: 6px; height: 6px; cursor: ns-resize; }
+.grip--s  { bottom: 0; left: 6px; right: 6px; height: 6px; cursor: ns-resize; }
+.grip--w  { left: 0; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+.grip--e  { right: 0; top: 6px; bottom: 6px; width: 6px; cursor: ew-resize; }
+.grip--nw { top: 0; left: 0; width: 6px; height: 6px; cursor: nwse-resize; }
+.grip--ne { top: 0; right: 0; width: 6px; height: 6px; cursor: nesw-resize; }
+.grip--sw { bottom: 0; left: 0; width: 6px; height: 6px; cursor: nesw-resize; }
+.grip--se { bottom: 0; right: 0; width: 6px; height: 6px; cursor: nwse-resize; }
 
 /* --------------------------------------------------------------- drop area */
 
@@ -176,7 +186,6 @@ button { background: none; border: none; cursor: pointer; }
   flex: 1;
   min-height: 0;
   margin: var(--spacing-16);
-  border: 1px solid var(--color-graphite);
   border-radius: var(--radius-cards);
   background: var(--color-carbon);
   display: flex;
@@ -184,11 +193,13 @@ button { background: none; border: none; cursor: pointer; }
   justify-content: center;
   overflow: hidden;
   cursor: pointer;
-  transition: border-color 120ms linear;
+  transition: box-shadow 120ms linear;
 }
 
-.drop:hover { border-color: var(--color-iron); }
-.drop[data-dragging="true"] { border-color: var(--color-signal-white); }
+/* The edge is drawn only when it means something: a ring under the pointer, a
+   brighter one with a file held over it. */
+.drop:hover { box-shadow: inset 0 0 0 1px var(--color-graphite); }
+.drop[data-dragging="true"] { box-shadow: inset 0 0 0 1px var(--color-signal-white); }
 
 .drop__dots {
   position: absolute;
@@ -216,13 +227,6 @@ button { background: none; border: none; cursor: pointer; }
   color: var(--color-chalk);
 }
 
-.drop__hint {
-  font-family: var(--font-input);
-  font-size: 13px;
-  letter-spacing: -0.0220em;
-  color: var(--color-smoke);
-}
-
 /* ---------------------------------------------------------------- log pane */
 
 .pane {
@@ -230,7 +234,6 @@ button { background: none; border: none; cursor: pointer; }
   height: var(--log-height);
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--color-graphite);
   min-height: 0;
 }
 
@@ -262,82 +265,239 @@ button { background: none; border: none; cursor: pointer; }
 
 /* ----------------------------------------------------------------- sidebar */
 
+/* Every control here is a filled surface rather than an outlined box, which
+   leaves the divider below as the only rule drawn anywhere in the window. */
+
 .side {
   flex: none;
   width: var(--side-width);
   border-left: 1px solid var(--color-graphite);
   padding: var(--spacing-16);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-8);
 }
 
-.side .caption { padding: var(--spacing-4) 0 var(--spacing-8); }
-.side .caption + .group { margin-bottom: var(--spacing-12); }
+.side > * { flex: none; }         /* nothing shrinks: the column never scrolls */
+.side .caption { padding: var(--spacing-8) 0 var(--spacing-4); }
+.side .caption:first-child { padding-top: 0; }
 
-/* Groups keep their natural height and the sidebar scrolls past them. Without
-   this they are flex items that shrink, and the overflow:hidden below lets a
-   squeezed group clip its own rows away instead of growing a scrollbar. */
-.side > .group { flex: none; }
-
-.group {
-  border: 1px solid var(--color-graphite);
-  border-radius: var(--radius-cards);
-  overflow: hidden;
+/* One line for what the settings above add up to, and nothing more. */
+.note {
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-smoke);
+  padding-top: var(--spacing-4);
 }
 
-.row {
+/* Exclusive choices in a sunken track: no dividers to draw, and the choice is
+   simply the lit cell. */
+.seg {
   display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-12);
-  width: 100%;
-  text-align: left;
-  padding: var(--spacing-12) var(--spacing-16);
-  border-bottom: 1px solid var(--color-graphite);
-  background: transparent;
-  transition: background 120ms linear;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-carbon);
+  border-radius: var(--radius-cards);
 }
 
-.row:last-child { border-bottom: none; }
-.row:not(.row--static):hover { background: var(--color-carbon); }
-
-.row[aria-checked="true"],
-.row[aria-pressed="true"] { background: var(--color-carbon); }
-
-.row[aria-disabled="true"] { opacity: 0.4; }
-.row[aria-disabled="true"] select { pointer-events: none; }
-
-.row__text {
+.seg__cell {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-}
-
-.row__label {
-  font-size: 14px;
-  color: var(--color-chalk);
-}
-
-.row__hint {
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 4px;
+  border-radius: 6px;
+  white-space: nowrap;      /* a squeezed sidebar shortens the track, not the row */
+  font-family: var(--font-input);
   font-size: 13px;
-  line-height: 1.38;
+  letter-spacing: -0.0220em;
   color: var(--color-smoke);
+  transition: background 120ms linear, color 120ms linear;
 }
 
-.row__controls {
+.seg__cell .icon { width: 15px; height: 15px; margin: 0; }
+.seg__cell:hover { color: var(--color-chalk); }
+
+.seg__cell[aria-checked="true"] {
+  background: var(--color-signal-white);
+  color: var(--color-obsidian);
+}
+
+/* The output name, shown the way it will be read back off the disk. */
+.name {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--color-carbon);
+  border-radius: var(--radius-cards);
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  transition: background 120ms linear;
+}
+
+.name:focus-within { background: var(--color-graphite); }
+.name__fixed { color: var(--color-iron); }
+
+.name__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--color-chalk);
+  user-select: text;
+}
+
+.name__input::placeholder { color: var(--color-smoke); }
+
+/* A native select drops a Windows menu over the page - grey, square and
+   nothing to do with this - so the list is drawn here instead. */
+.select { position: relative; }
+
+.select__trigger {
   display: flex;
   align-items: center;
   gap: var(--spacing-8);
-  margin-top: var(--spacing-4);
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--color-carbon);
+  border-radius: var(--radius-cards);
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-chalk);
+  transition: background 120ms linear;
 }
+
+.select__trigger:hover,
+.select[data-open="true"] .select__trigger { background: var(--color-graphite); }
+
+.select__value {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select__caret {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: var(--color-smoke);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 120ms linear;
+}
+
+.select[data-open="true"] .select__caret { transform: rotate(180deg); }
+
+.select__menu {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 216px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--color-graphite);
+  border-radius: var(--radius-cards);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6);
+}
+
+.select__menu[data-drop="up"] { top: auto; bottom: calc(100% + 4px); }
+
+.select__item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: left;
+  font-family: var(--font-input);
+  font-size: 13px;
+  letter-spacing: -0.0220em;
+  color: var(--color-ash);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.select__item:hover { background: var(--color-iron); color: var(--color-chalk); }
+
+.select__item[aria-selected="true"] {
+  background: var(--color-iron);
+  color: var(--color-signal-white);
+}
+
+/* Staging is the one setting that is rarely wanted, so it stands apart. */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-12);
+  margin: var(--spacing-8) calc(var(--spacing-8) * -1) 0;
+  padding: var(--spacing-8);
+  border-radius: var(--radius-cards);
+  font-size: 14px;
+  color: var(--color-chalk);
+  text-align: left;
+  transition: background 120ms linear;
+}
+
+.toggle:hover { background: var(--color-carbon); }
+.toggle__label { flex: 1; }
+
+.switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-buttons);
+  background: var(--color-graphite);
+  transition: background 120ms linear;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-buttons);
+  background: var(--color-iron);
+  transition: transform 120ms linear, background 120ms linear;
+}
+
+.toggle[aria-pressed="true"] .switch { background: var(--color-signal-white); }
+
+.toggle[aria-pressed="true"] .switch::after {
+  transform: translateX(12px);
+  background: var(--color-obsidian);
+}
+
+.drive {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-8);
+  transition: opacity 120ms linear;
+}
+
+.drive .select { width: 88px; }
+.drive[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
 
 .icon {
   width: 20px;
   height: 20px;
   fill: none;
+  stroke: currentColor;
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -348,63 +508,7 @@ button { background: none; border: none; cursor: pointer; }
 .icon--gold { stroke: var(--color-compass-gold); }
 .icon--lg { width: 28px; height: 28px; }
 
-.marker {
-  width: 14px;
-  height: 14px;
-  border-radius: var(--radius-icons);
-  border: 1.5px solid var(--color-iron);
-  flex: none;
-  margin-top: 2px;
-}
-
-/* A switch reads as a square; a radio reads as a circle. */
-.row[role="switch"] .marker { border-radius: var(--radius-tags); }
-
-.row[aria-checked="true"] .marker,
-.row[aria-pressed="true"] .marker {
-  border-color: var(--color-signal-white);
-  background: var(--color-signal-white);
-  box-shadow: inset 0 0 0 3px var(--color-carbon);
-}
-
-/* A short row of exclusive choices, for when four full rows would cost more
-   sidebar than the choice is worth. */
-.seg {
-  display: inline-flex;
-  border: 1px solid var(--color-graphite);
-  border-radius: var(--radius-tags);
-  overflow: hidden;
-}
-
-.seg__cell {
-  padding: 5px 11px;
-  font-family: var(--font-input);
-  font-size: 13px;
-  letter-spacing: -0.0220em;
-  color: var(--color-smoke);
-  border-right: 1px solid var(--color-graphite);
-  transition: background 120ms linear, color 120ms linear;
-}
-
-.seg__cell:last-child { border-right: none; }
-.seg__cell:hover { background: var(--color-graphite); color: var(--color-chalk); }
-
-.seg__cell[aria-checked="true"] {
-  background: var(--color-signal-white);
-  color: var(--color-obsidian);
-}
-
-select {
-  background: var(--color-obsidian);
-  border: 1px solid var(--color-graphite);
-  border-radius: var(--radius-tags);
-  color: var(--color-chalk);
-  padding: 5px 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-select:focus-visible, button:focus-visible {
+button:focus-visible, .name:focus-within {
   outline: 1px solid var(--color-ash);
   outline-offset: 2px;
 }
@@ -458,7 +562,6 @@ select:focus-visible, button:focus-visible {
   align-items: center;
   gap: var(--spacing-16);
   padding: 0 var(--spacing-16);
-  border-top: 1px solid var(--color-graphite);
 }
 
 /* The progress bar is the top edge of the status bar, so it never takes a row
@@ -510,13 +613,9 @@ select:focus-visible, button:focus-visible {
 /* ------------------------------------------------------------ small window */
 
 @media (max-width: 940px) {
-  :root { --side-width: 260px; --log-height: 150px; }
+  :root { --side-width: 264px; --log-height: 150px; }
 }
 
-/* Too short to explain itself: drop to labels only, the way a settings pane
-   does when the window is squeezed, so nothing in the sidebar is cut off. */
-@media (max-height: 600px) {
+@media (max-height: 660px) {
   :root { --log-height: 132px; }
-  .drop__hint { display: none; }
-  .side .row__hint { display: none; }
 }

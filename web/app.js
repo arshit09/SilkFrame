@@ -9,48 +9,135 @@ const $ = (id) => document.getElementById(id);
 
 const ui = {
   drop: $("drop"),
-  dropHint: $("drop-hint"),
   choose: $("choose"),
-  device: $("device"),
-  hintFps: $("hint-fps"),
-  hintSlowmo: $("hint-slowmo"),
-  hintFactor: $("hint-factor"),
+  note: $("note"),
+  suffix: $("suffix"),
   stage: $("stage"),
   driveCell: $("drive-cell"),
-  drive: $("drive"),
   free: $("free"),
-  badge: $("badge"),
-  badgeText: $("badge-text"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
   log: $("log"),
   cancel: $("cancel"),
   close: $("close"),
+  toolbar: $("toolbar"),
+  winControls: $("wincontrols"),
+  winMin: $("win-min"),
+  winMax: $("win-max"),
+  winClose: $("win-close"),
 };
 
-const state = { mode: "fps", factor: 2, device: "auto", stage: false, drives: [], busy: false };
+const state = {
+  mode: "fps", factor: 2, device: "auto", suffix: "", stage: false, drives: [], busy: false,
+};
+
+// ----------------------------------------------------------------- listboxes
+
+// A native <select> opens a menu Windows draws itself, which no stylesheet can
+// reach, so the list is part of the page instead. Only one is ever open.
+const selects = [];
+
+function makeSelect(id, onPick) {
+  const root = $(id);
+  const trigger = root.querySelector(".select__trigger");
+  const shown = root.querySelector(".select__value");
+  const menu = root.querySelector(".select__menu");
+  const select = { value: "" };
+
+  select.close = () => {
+    menu.hidden = true;
+    root.dataset.open = "false";
+    trigger.setAttribute("aria-expanded", "false");
+  };
+
+  select.open = () => {
+    selects.forEach((other) => { if (other !== select) other.close(); });
+    menu.hidden = false;
+    root.dataset.open = "true";
+    trigger.setAttribute("aria-expanded", "true");
+    // Downwards, unless the window ends before the menu would.
+    const room = window.innerHeight - trigger.getBoundingClientRect().bottom;
+    menu.dataset.drop = room < menu.offsetHeight + 12 ? "up" : "down";
+  };
+
+  // Showing a value is not the same as picking one: filling the list has to
+  // leave the options where they were, without telling Python anything.
+  select.show = (spec) => {
+    select.value = spec;
+    const items = [...menu.children];
+    items.forEach((item) => {
+      item.setAttribute("aria-selected", String(item.dataset.value === spec));
+    });
+    const found = items.find((item) => item.dataset.value === spec);
+    shown.textContent = found ? found.textContent : "";
+  };
+
+  select.fill = (options, chosen) => {
+    menu.innerHTML = "";
+    options.forEach(([spec, text]) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "select__item";
+      item.setAttribute("role", "option");
+      item.dataset.value = spec;
+      item.textContent = text;
+      item.addEventListener("click", () => {
+        select.close();
+        select.show(spec);
+        onPick(spec);
+      });
+      menu.append(item);
+    });
+    select.show(options.some(([spec]) => spec === chosen) ? chosen : "");
+  };
+
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (menu.hidden) select.open();
+    else select.close();
+  });
+  selects.push(select);
+  return select;
+}
+
+const closeSelects = () => selects.forEach((select) => select.close());
+
+document.addEventListener("click", closeSelects);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeSelects();
+});
+
+const deviceSelect = makeSelect("device", (spec) => setDevice(spec));
+const driveSelect = makeSelect("drive", () => {
+  showFree();
+  pushOptions();
+});
+
+// Naming the GPUs means loading torch, so the real list lands a moment after
+// the window does and this stands in until it gets here.
+deviceSelect.fill([["auto", "Auto"]], "auto");
 
 // ------------------------------------------------------------------- options
 
 function pushOptions() {
   if (!window.pywebview) return;
   window.pywebview.api.set_options(
-    state.mode, state.factor, state.device, state.stage, ui.drive.value || "");
+    state.mode, state.factor, state.device, state.suffix, state.stage, driveSelect.value || "");
 }
 
 // Mode and factor only mean something together - 4x is a doubled rate twice
-// over in one mode and a quarter-speed clip in the other - so every label that
-// carries a number is rewritten whenever either of them changes.
+// over in one mode and a quarter-speed clip in the other - so the one line
+// that says what they add up to, and the name it would write, are rewritten
+// whenever either of them changes.
 function describe() {
   const n = state.factor;
-  ui.hintFps.textContent = `30 fps becomes ${30 * n}. Same length, audio copied.`;
-  ui.hintSlowmo.textContent = `${n}x as long at the same rate. No audio.`;
-  ui.hintFactor.textContent = n === 2
-    ? "One new frame between every pair."
-    : `${n - 1} new frames between every pair.`;
-  const tag = state.mode === "slowmo" ? (n === 2 ? "slowmo" : `slowmo${n}x`) : `${n}x`;
-  ui.dropHint.textContent = `each one is written beside its source as name.${tag}.mp4`;
+  ui.note.textContent = state.mode === "slowmo"
+    ? `${n}x longer, no audio`
+    : `30 fps becomes ${30 * n}, audio kept`;
+  ui.suffix.placeholder = state.mode === "slowmo"
+    ? (n === 2 ? "slowmo" : `slowmo${n}x`)
+    : `${n}x`;
 }
 
 function setMode(mode) {
@@ -73,48 +160,43 @@ function setFactor(factor) {
 
 function setDevice(spec) {
   state.device = spec;
-  ui.device.value = spec;
+  deviceSelect.show(spec);
+  pushOptions();
+}
+
+// Anything Windows will not take in a file name is dropped as it is typed, so
+// the field always reads as what lands on the disk. An empty one means the
+// automatic name, which is what the placeholder is showing.
+function setSuffix(text) {
+  const kept = text.replace(/[<>:"/\\|?*]/g, "");
+  if (ui.suffix.value !== kept) ui.suffix.value = kept;
+  state.suffix = kept;
   pushOptions();
 }
 
 // The list arrives a moment after the window does, because naming the GPUs
 // means loading torch. Whatever was chosen in the meantime is kept.
 function fillDevices(devices) {
-  const chosen = state.device;
-  ui.device.innerHTML = "";
-  [["auto", "Auto"], ...devices].forEach(([spec, label]) => {
-    const option = document.createElement("option");
-    option.value = spec;
-    option.textContent = label;
-    ui.device.append(option);
-  });
-  ui.device.value = chosen;
-  setDevice(ui.device.value || "auto");
+  deviceSelect.fill([["auto", "Auto"], ...devices], state.device);
+  setDevice(deviceSelect.value || "auto");
 }
 
 function setStaging(on) {
   state.stage = on;
   ui.stage.setAttribute("aria-pressed", String(on));
   ui.driveCell.setAttribute("aria-disabled", String(!on));
-  ui.drive.disabled = !on;
+  if (!on) driveSelect.close();
   pushOptions();
 }
 
 function showFree() {
-  const found = state.drives.find((entry) => entry[0] === ui.drive.value);
+  const found = state.drives.find((entry) => entry[0] === driveSelect.value);
   ui.free.textContent = found ? `${Math.round(found[1] / 1073741824)} GB free` : "";
 }
 
 function fillDrives(drives, selected) {
   state.drives = drives;
-  ui.drive.innerHTML = "";
-  drives.forEach(([letter]) => {
-    const option = document.createElement("option");
-    option.value = letter;
-    option.textContent = letter;
-    ui.drive.append(option);
-  });
-  if (selected) ui.drive.value = selected;
+  driveSelect.fill(drives.map(([letter]) => [letter, letter]), selected);
   showFree();
 }
 
@@ -126,11 +208,6 @@ function write(text) {
   line.textContent = text;
   ui.log.append(line);
   ui.log.scrollTop = ui.log.scrollHeight;
-}
-
-function setBadge(text, live) {
-  ui.badgeText.textContent = text;
-  ui.badge.dataset.live = String(live);
 }
 
 function setProgress(done, total) {
@@ -156,7 +233,6 @@ const app = {
         ui.status.textContent = message.text;
         ui.status.dataset.state = message.failed ? "failed" : "done";
         ui.close.hidden = false;
-        setBadge(message.failed ? "Finished with errors" : "Done", false);
         break;
       case "busy":
         state.busy = message.value;
@@ -164,7 +240,6 @@ const app = {
         if (message.value) {
           ui.close.hidden = true;
           ui.status.dataset.state = "running";
-          setBadge("Running", true);
         } else {
           setProgress(0, 0);
         }
@@ -193,19 +268,63 @@ ui.drop.addEventListener("click", () => window.pywebview.api.browse());
 ui.cancel.addEventListener("click", () => window.pywebview.api.cancel());
 ui.close.addEventListener("click", () => window.pywebview.api.close());
 
+// The toolbar is the title bar. pywebview starts a window drag from any
+// mousedown that bubbles up to it, so the buttons standing on it have to keep
+// their own clicks to themselves - and a double click anywhere else maximises,
+// the way the real title bar did.
+ui.winMin.addEventListener("click", () => window.pywebview.api.minimize());
+ui.winMax.addEventListener("click", () => window.pywebview.api.toggle_maximize());
+ui.winClose.addEventListener("click", () => window.pywebview.api.close());
+ui.winControls.addEventListener("mousedown", (event) => event.stopPropagation());
+ui.toolbar.addEventListener("dblclick", (event) => {
+  if (!ui.winControls.contains(event.target)) window.pywebview.api.toggle_maximize();
+});
+
+// And the window has no border either, so the grips are the resize handles.
+// Each edge says how far a pointer delta moves the window's top left corner
+// and how far it grows the window: west drags the left edge out, east only
+// widens, and the corners do both at once.
+const EDGES = {
+  n: [0, 1, 0, -1], s: [0, 0, 0, 1], w: [1, 0, -1, 0], e: [0, 0, 1, 0],
+  nw: [1, 1, -1, -1], ne: [0, 1, 1, -1], sw: [1, 0, -1, 1], se: [0, 0, 1, 1],
+};
+let grip = null;
+
+document.querySelectorAll(".grip").forEach((strip) => {
+  strip.addEventListener("mousedown", (event) => {
+    event.stopPropagation();           // an edge is not the title bar
+    // Screen coordinates arrive in CSS pixels; the window lives in real ones.
+    const scale = window.devicePixelRatio;
+    grip = {
+      edge: EDGES[strip.dataset.edge], scale,
+      x: event.screenX, y: event.screenY,
+      box: [window.screenX, window.screenY, window.outerWidth, window.outerHeight],
+    };
+  });
+});
+
+window.addEventListener("mousemove", (event) => {
+  if (!grip) return;
+  const dx = event.screenX - grip.x;
+  const dy = event.screenY - grip.y;
+  const [moveX, moveY, growW, growH] = grip.edge;
+  const [x, y, width, height] = grip.box;
+  window.pywebview.api.resize_window(
+    Math.round((x + moveX * dx) * grip.scale), Math.round((y + moveY * dy) * grip.scale),
+    Math.round((width + growW * dx) * grip.scale),
+    Math.round((height + growH * dy) * grip.scale));
+});
+
+window.addEventListener("mouseup", () => { grip = null; });
+
 document.querySelectorAll("[data-mode]").forEach((cell) => {
   cell.addEventListener("click", () => setMode(cell.dataset.mode));
 });
 document.querySelectorAll("[data-factor]").forEach((cell) => {
   cell.addEventListener("click", () => setFactor(Number(cell.dataset.factor)));
 });
-ui.device.addEventListener("change", () => setDevice(ui.device.value));
 ui.stage.addEventListener("click", () => setStaging(!state.stage));
-ui.drive.addEventListener("change", () => {
-  showFree();
-  pushOptions();
-});
-ui.drive.addEventListener("click", (event) => event.stopPropagation());
+ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
 // The drop itself is handled in Python, which is the only side that can see the
 // real path of a dropped file; these listeners only paint the hover state and
@@ -228,6 +347,7 @@ window.addEventListener("pywebviewready", async () => {
   fillDrives(boot.drives, boot.drive);
   setFactor(boot.factor);
   setDevice(boot.device);
+  setSuffix(boot.suffix);
   setMode(boot.mode);
   setStaging(boot.stage);
   write(boot.greeting);

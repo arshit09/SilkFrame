@@ -8,19 +8,25 @@
 <body>
 <div class="app">
 
-  <header class="toolbar">
+  <header class="toolbar pywebview-drag-region" id="toolbar">
     <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
       <rect x="3" y="9" width="7" height="14" rx="1"></rect>
       <rect x="12.5" y="9" width="7" height="14" rx="1" stroke-dasharray="2.5 2.5"></rect>
       <rect x="22" y="9" width="7" height="14" rx="1"></rect>
     </svg>
     <span class="toolbar__title">SilkFrame</span>
-    <span class="toolbar__meta">RIFE 4.25</span>
     <span class="toolbar__spacer"></span>
-    <span class="badge" id="badge" data-live="false">
-      <span class="badge__dot"></span>
-      <span id="badge-text">Ready</span>
-    </span>
+    <div class="wincontrols" id="wincontrols">
+      <button class="wincontrol" id="win-min" type="button" aria-label="Minimise">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0.5 5h9"></path></svg>
+      </button>
+      <button class="wincontrol" id="win-max" type="button" aria-label="Maximise">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0.7" y="0.7" width="8.6" height="8.6"></rect></svg>
+      </button>
+      <button class="wincontrol wincontrol--close" id="win-close" type="button" aria-label="Close">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0.7 0.7l8.6 8.6M9.3 0.7l-8.6 8.6"></path></svg>
+      </button>
+    </div>
   </header>
 
   <div class="workspace">
@@ -38,7 +44,6 @@
             <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
           </svg>
           <p class="drop__title">Drop videos here</p>
-          <p class="drop__hint" id="drop-hint">each one is written beside its source as name.2x.mp4</p>
           <button class="pill" id="choose" type="button">Choose files</button>
         </div>
       </div>
@@ -53,105 +58,62 @@
     <aside class="side">
 
       <p class="caption">Output</p>
-      <div class="group" role="radiogroup" aria-label="Output">
-        <button class="row" type="button" role="radio" data-mode="fps" aria-checked="true">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+      <div class="seg" role="radiogroup" aria-label="Output">
+        <button class="seg__cell" type="button" role="radio" data-mode="fps" aria-checked="true">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
             <rect x="3" y="9" width="7" height="14" rx="1"></rect>
             <rect x="12.5" y="9" width="7" height="14" rx="1" stroke-dasharray="2.5 2.5"></rect>
             <rect x="22" y="9" width="7" height="14" rx="1"></rect>
-          </svg>
-          <span class="row__text">
-            <span class="row__label">Higher frame rate</span>
-            <span class="row__hint" id="hint-fps">30 fps becomes 60. Same length, audio copied.</span>
-          </span>
-          <span class="marker"></span>
+          </svg>Frame rate
         </button>
-        <button class="row" type="button" role="radio" data-mode="slowmo" aria-checked="false">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
+        <button class="seg__cell" type="button" role="radio" data-mode="slowmo" aria-checked="false">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
             <circle cx="16" cy="16" r="12"></circle>
             <path d="M16 9v7l5 3"></path>
-          </svg>
-          <span class="row__text">
-            <span class="row__label">Slow motion</span>
-            <span class="row__hint" id="hint-slowmo">2x as long at the same rate. No audio.</span>
-          </span>
-          <span class="marker"></span>
+          </svg>Slow motion
         </button>
       </div>
-
-      <p class="caption">Speed</p>
-      <div class="group">
-        <div class="row row--static">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
-            <path d="M3 6v20M29 6v20"></path>
-            <path d="M9.5 11v10M16 11v10M22.5 11v10"></path>
-          </svg>
-          <span class="row__text">
-            <span class="row__label">Frames out per frame in</span>
-            <span class="row__hint" id="hint-factor">One new frame between every pair.</span>
-            <span class="row__controls">
-              <span class="seg" role="radiogroup" aria-label="Frames out per frame in">
-                <button class="seg__cell" type="button" role="radio" data-factor="2"
-                        aria-checked="true">2x</button>
-                <button class="seg__cell" type="button" role="radio" data-factor="3"
-                        aria-checked="false">3x</button>
-                <button class="seg__cell" type="button" role="radio" data-factor="4"
-                        aria-checked="false">4x</button>
-                <button class="seg__cell" type="button" role="radio" data-factor="8"
-                        aria-checked="false">8x</button>
-              </span>
-            </span>
-          </span>
-        </div>
+      <div class="seg" role="radiogroup" aria-label="Frames out per frame in">
+        <button class="seg__cell" type="button" role="radio" data-factor="2" aria-checked="true">2x</button>
+        <button class="seg__cell" type="button" role="radio" data-factor="3" aria-checked="false">3x</button>
+        <button class="seg__cell" type="button" role="radio" data-factor="4" aria-checked="false">4x</button>
+        <button class="seg__cell" type="button" role="radio" data-factor="8" aria-checked="false">8x</button>
       </div>
+      <p class="note" id="note"></p>
 
-      <p class="caption">Processing</p>
-      <div class="group">
-        <div class="row row--static">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
-            <rect x="9" y="9" width="14" height="14" rx="1"></rect>
-            <path d="M13 3v6M19 3v6M13 23v6M19 23v6M3 13h6M3 19h6M23 13h6M23 19h6"></path>
-          </svg>
-          <span class="row__text">
-            <span class="row__label">Device</span>
-            <span class="row__hint">Auto takes the GPU with the most free memory.</span>
-            <span class="row__controls">
-              <select id="device" aria-label="Device">
-                <option value="auto">Auto</option>
-              </select>
-            </span>
-          </span>
-        </div>
-      </div>
+      <p class="caption">Suffix</p>
+      <label class="name">
+        <span class="name__fixed">name.</span>
+        <input class="name__input" id="suffix" type="text" maxlength="40"
+               spellcheck="false" autocomplete="off" aria-label="Suffix">
+      </label>
 
-      <p class="caption">Staging</p>
-      <div class="group">
-        <button class="row" type="button" role="switch" id="stage" aria-pressed="false">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
-            <rect x="3" y="18" width="26" height="9" rx="1"></rect>
-            <circle cx="24" cy="22.5" r="1.5"></circle>
-            <path d="M16 4v10M12 10l4 4 4-4"></path>
+      <p class="caption">Device</p>
+      <div class="select" id="device">
+        <button class="select__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span class="select__value"></span>
+          <svg class="select__caret" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 4l3 3 3-3"></path>
           </svg>
-          <span class="row__text">
-            <span class="row__label">Copy to a fast drive</span>
-            <span class="row__hint">Process there, move the result back. Rarely faster.</span>
-          </span>
-          <span class="marker"></span>
         </button>
-        <div class="row row--static" id="drive-cell" aria-disabled="true">
-          <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
-            <circle cx="16" cy="16" r="12"></circle>
-            <circle cx="16" cy="16" r="3.5"></circle>
-            <path d="M16 4v3M16 25v3M4 16h3M25 16h3"></path>
-          </svg>
-          <span class="row__text">
-            <span class="row__label">Working drive</span>
-            <span class="row__controls">
-              <select id="drive" aria-label="Working drive"></select>
-              <span class="meta" id="free"></span>
-            </span>
-          </span>
+        <div class="select__menu" role="listbox" hidden></div>
+      </div>
+
+      <button class="toggle" type="button" role="switch" id="stage" aria-pressed="false">
+        <span class="toggle__label">Copy to a fast drive</span>
+        <span class="switch"></span>
+      </button>
+      <div class="drive" id="drive-cell" aria-disabled="true">
+        <div class="select" id="drive">
+          <button class="select__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span class="select__value"></span>
+            <svg class="select__caret" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 4l3 3 3-3"></path>
+            </svg>
+          </button>
+          <div class="select__menu" role="listbox" hidden></div>
         </div>
+        <span class="meta" id="free"></span>
       </div>
 
     </aside>
@@ -164,6 +126,18 @@
     <button class="ghost" id="cancel" type="button" disabled>Cancel</button>
     <button class="pill" id="close" type="button" hidden>Close</button>
   </footer>
+
+  <!-- The window has no border of its own, so these eight strips are the
+       resize handles: invisible, on top of everything, one per edge and
+       corner. -->
+  <div class="grip grip--n" data-edge="n"></div>
+  <div class="grip grip--s" data-edge="s"></div>
+  <div class="grip grip--w" data-edge="w"></div>
+  <div class="grip grip--e" data-edge="e"></div>
+  <div class="grip grip--nw" data-edge="nw"></div>
+  <div class="grip grip--ne" data-edge="ne"></div>
+  <div class="grip grip--sw" data-edge="sw"></div>
+  <div class="grip grip--se" data-edge="se"></div>
 
 </div>
 <script src="app.js"></script>

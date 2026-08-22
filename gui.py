@@ -10,6 +10,7 @@ processed there, and the result is moved back; the copy and everything else in
 the working folder is deleted afterwards.
 """
 
+import ctypes
 import json
 import os
 import queue
@@ -20,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from ctypes import wintypes
 from pathlib import Path
 
 import webview
@@ -28,6 +30,7 @@ from webview.dom import DOMEventHandler
 SILKFRAME = Path(__file__).resolve().parent / "silkframe.py"
 KEEP_CONTAINER = {".mp4", ".mkv", ".mov", ".m4v"}
 PROGRESS = re.compile(r"(\d+)/(\d+) frames")
+NOT_IN_A_NAME = re.compile(r'[<>:"/\\|?*]')
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 FROZEN = getattr(sys, "frozen", False)
 WORKER_FLAG = "--interpolate"
@@ -79,13 +82,69 @@ def working_dir(drive):
     return Path(tempfile.mkdtemp(prefix="silkframe-", dir=parent))
 
 
-def output_for(source, mode, factor):
-    suffix = source.suffix if source.suffix.lower() in KEEP_CONTAINER else ".mp4"
+def auto_tag(mode, factor):
+    """The name part a file takes when no suffix was typed for it."""
     if mode == "slowmo":
-        tag = ".slowmo" if factor == 2 else f".slowmo{factor}x"
-    else:
-        tag = f".{factor}x"
-    return source.with_name(f"{source.stem}{tag}{suffix}")
+        return "slowmo" if factor == 2 else f"slowmo{factor}x"
+    return f"{factor}x"
+
+
+def output_for(source, mode, factor, suffix):
+    container = source.suffix if source.suffix.lower() in KEEP_CONTAINER else ".mp4"
+    tag = NOT_IN_A_NAME.sub("", suffix).strip(" .") or auto_tag(mode, factor)
+    return source.with_name(f"{source.stem}.{tag}{container}")
+
+
+# A frameless window has no resize border either, and putting the native one
+# back means letting Windows draw a frame - which it paints black, as a bar
+# above the toolbar. So the page grips its own edges instead and pushes a new
+# rectangle through here, and the window stays exactly as wide as the page.
+SWP_NOZORDER = 0x0004
+USER32 = ctypes.windll.user32
+
+
+class Frame:
+    """What the title bar used to do, for a window that no longer has one."""
+
+    def __init__(self, window):
+        self.window = window
+        self.hwnd = window.native.Handle.ToInt32()
+        self.fit_to_screen()
+
+    def fit_to_screen(self):
+        """Maximised, a borderless form covers the taskbar unless it is told
+        where the screen ends. Done once up front so Windows' own maximise
+        lands right too, and again on the way in, in case the window has since
+        been dragged onto a different screen."""
+        from System.Drawing import Rectangle
+        from System.Windows.Forms import Screen
+
+        area = Screen.FromControl(self.window.native).WorkingArea
+        self.window.native.MaximizedBounds = Rectangle(
+            area.X, area.Y, area.Width, area.Height)
+
+    def toggle_maximize(self):
+        if USER32.IsZoomed(self.hwnd):
+            self.window.restore()
+        else:
+            self.fit_to_screen()
+            self.window.maximize()
+
+    def resize(self, left, top, width, height):
+        """A new rectangle from the page's edge grips, in screen pixels."""
+        if USER32.IsZoomed(self.hwnd):
+            return
+        box = wintypes.RECT()
+        USER32.GetWindowRect(self.hwnd, ctypes.byref(box))
+        floor = self.window.native.MinimumSize
+        # At the minimum the dragged edge stops and the opposite one holds.
+        if width < floor.Width:
+            left = box.left if left == box.left else box.right - floor.Width
+            width = floor.Width
+        if height < floor.Height:
+            top = box.top if top == box.top else box.bottom - floor.Height
+            height = floor.Height
+        USER32.SetWindowPos(self.hwnd, 0, left, top, width, height, SWP_NOZORDER)
 
 
 class Api:
@@ -106,14 +165,15 @@ class Api:
             "mode": self._app.options["mode"],
             "factor": self._app.options["factor"],
             "device": self._app.options["device"],
+            "suffix": self._app.options["suffix"],
             "stage": self._app.options["drive"] is not None,
             "greeting": "ready - drop a video, or choose one from disk",
         }
 
-    def set_options(self, mode, factor, device, stage, drive):
+    def set_options(self, mode, factor, device, suffix, stage, drive):
         """The options a file carries are the ones that were set when it was added."""
         self._app.options = {"mode": mode, "factor": int(factor), "device": device,
-                             "drive": drive if stage else None}
+                             "suffix": suffix, "drive": drive if stage else None}
 
     def browse(self):
         chosen = self._app.window.create_file_dialog(
@@ -123,6 +183,15 @@ class Api:
     def cancel(self):
         self._app.cancel()
 
+    def minimize(self):
+        self._app.window.minimize()
+
+    def toggle_maximize(self):
+        self._app.frame.toggle_maximize()
+
+    def resize_window(self, left, top, width, height):
+        self._app.frame.resize(int(left), int(top), int(width), int(height))
+
     def close(self):
         self._app.window.destroy()
 
@@ -130,6 +199,7 @@ class Api:
 class App:
     def __init__(self):
         self.window = None
+        self.frame = None
         self.messages = queue.Queue()
         self.jobs = queue.Queue()
         self.process = None
@@ -138,7 +208,8 @@ class App:
         self.current = ""
         self.done = 0
         self.results = []
-        self.options = {"mode": "fps", "factor": 2, "device": "auto", "drive": None}
+        self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": "",
+                        "drive": None}
 
     # ---------------------------------------------------------------- startup
 
@@ -171,6 +242,7 @@ class App:
         """Only Python can see the real path of a dropped file, so the drop
         listener lives here rather than in app.js."""
         self.loaded.set()  # released first: losing the drop must not mute the page
+        self.frame = Frame(self.window)
         target = self.window.dom.get_element("#drop")
         if target:
             target.events.drop += DOMEventHandler(self.on_drop, prevent_default=True)
@@ -244,7 +316,8 @@ class App:
                 self.done = 0
 
     def run(self, source, options):
-        destination = output_for(source, options["mode"], options["factor"])
+        destination = output_for(source, options["mode"], options["factor"],
+                                 options["suffix"])
         drive = options["drive"]
         same_drive = drive and os.path.splitdrive(source.resolve())[0].upper() == drive.upper()
         if same_drive:
@@ -395,6 +468,9 @@ def main():
         width=1040, height=680, min_size=(860, 620),
         background_color="#101010",
         text_select=True,
+        # The page draws the title bar; easy_drag would otherwise make every
+        # square inch of it a drag handle, not just .pywebview-drag-region.
+        frameless=True, easy_drag=False,
     )
     app.attach(window)
     webview.start()
