@@ -634,6 +634,10 @@ const TURN = 5;        // radians a second of aimless steering
 const SETTLE = 620;    // milliseconds one dot takes to reach its slot
 const STAGGER = 380;   // milliseconds between the first slot filling and the last
 const RELEASE = 300;   // milliseconds the grid is held once nothing asks for it
+const SWELL = 520;     // milliseconds the wave takes to rise once the work starts
+const WAVE = 150;      // pixels from one crest of it to the next
+const PERIOD = 2400;   // milliseconds a crest takes to travel one wavelength
+const CREST = 5;       // pixels a dot rides either side of its slot
 
 // Out fast, in slow, and a little past the slot before it comes to rest.
 const ease = (t) => 1 + 1.7 * (t - 1) ** 3 + 0.7 * (t - 1) ** 2;
@@ -645,6 +649,7 @@ let formed = false;
 let origin = null;   // where the file crossed the edge, in canvas coordinates
 let since = 0;   // milliseconds since the dots last changed their minds
 let calm = 0;    // milliseconds nothing has asked for the grid
+let swell = 0;   // how much of the wave is showing, nothing to all of it
 let clock = 0;
 let last = null;
 let width = 0;
@@ -791,11 +796,18 @@ function paint(now) {
     scatter();
   }
 
+  // A file held over the panel gets the grid standing still; a job actually
+  // running gets a wave crossing it. The wave falls away faster than it rises,
+  // so there is next to none of it left by the time the grid breaks up.
+  const swelling = formed && state.busy;
+  swell += ((swelling ? 1 : 0) - swell) * (1 - Math.exp(-step / (swelling ? SWELL : SWELL / 3)));
+
   const secs = step / 1000;
   context.fillStyle = "#f3f3f3";
 
   dots.forEach((dot) => {
     let settled = 0;
+    let lift = 0;
     if (formed) {
       const slot = slots[dot.slot];
       settled = Math.max(0, Math.min((since - slot.delay) / SETTLE, 1));
@@ -803,6 +815,11 @@ function paint(now) {
       // Written back, so the drift picks up wherever the grid let go.
       dot.x = dot.fx + (slot.x - dot.fx) * shift;
       dot.y = dot.fy + (slot.y - dot.fy) * shift;
+      // Crests run down and across the grid, and each dot rides the one it is
+      // standing under. Off the slot rather than the dot, so a dot still on its
+      // way in is not made to swim there.
+      const phase = (slot.x + slot.y * 0.5) / WAVE - clock / PERIOD;
+      lift = Math.sin(phase * Math.PI * 2) * CREST * swell * settled;
     } else {
       drift(dot, secs);
     }
@@ -810,7 +827,7 @@ function paint(now) {
     const band = 0.5 + 0.5 * Math.sin((dot.x / Math.max(width, 1)) * Math.PI * 2 - clock * 0.0011);
     context.globalAlpha = 0.14 + 0.20 * dot.spark + settled * (0.12 + 0.20 * band);
     context.beginPath();
-    context.arc(dot.x, dot.y, 1.2, 0, Math.PI * 2);
+    context.arc(dot.x, dot.y + lift, 1.2, 0, Math.PI * 2);
     context.fill();
   });
 
