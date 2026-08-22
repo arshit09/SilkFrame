@@ -118,6 +118,51 @@ const driveSelect = makeSelect("drive", () => {
 // the window does and this stands in until it gets here.
 deviceSelect.fill([["auto", "Auto"]], "auto");
 
+// ------------------------------------------------------------------ tooltips
+
+// A GPU name, or the file being worked on, is regularly longer than the strip
+// it is given and is cut off with an ellipsis. Hovering one shows the whole of
+// it - and only when it really was cut, so nothing ever pops up over text that
+// can already be read in full.
+const CLIPPED = ".select__trigger, .select__item, .statusbar__text";
+
+const tip = document.createElement("div");
+tip.className = "tip";
+tip.hidden = true;
+document.body.append(tip);
+
+const hideTip = () => { tip.hidden = true; };
+
+function showTip(target) {
+  // A trigger is hovered anywhere across its width, but the value inside it is
+  // the part that was cut.
+  const text = target.querySelector(".select__value") || target;
+  if (text.scrollWidth <= text.clientWidth + 1) return hideTip();
+  tip.textContent = text.textContent;
+  tip.hidden = false;
+  // Under the text it belongs to, and inside the window on every side: the
+  // size is only known once it is on screen, so it is placed after showing.
+  const box = target.getBoundingClientRect();
+  const below = window.innerHeight - box.bottom > tip.offsetHeight + 14;
+  tip.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - tip.offsetWidth - 8))}px`;
+  tip.style.top = `${below ? box.bottom + 6 : box.top - tip.offsetHeight - 6}px`;
+}
+
+// One listener for the window rather than one per element, because the list
+// items are built and thrown away as the pickers are filled.
+document.addEventListener("mouseover", (event) => {
+  const target = event.target.closest ? event.target.closest(CLIPPED) : null;
+  if (target) showTip(target);
+  else hideTip();
+});
+
+// Nothing sends a mouseover when the text moves out from under a still
+// pointer, so a menu that scrolls, a menu that closes and a pointer that
+// leaves the window all say so themselves.
+document.addEventListener("scroll", hideTip, true);
+document.addEventListener("click", hideTip);
+document.addEventListener("mouseleave", hideTip);
+
 // ------------------------------------------------------------------- options
 
 function pushOptions() {

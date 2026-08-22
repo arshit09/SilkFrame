@@ -493,6 +493,9 @@ button { background: none; border: none; cursor: pointer; }
 .drive .select { width: 88px; }
 .drive[aria-disabled="true"] { opacity: 0.35; pointer-events: none; }
 
+/* What the switch above is worth, in the only terms that decide it. */
+.hint { line-height: 1.5; }
+
 .icon {
   width: 20px;
   height: 20px;
@@ -607,6 +610,28 @@ button:focus-visible, .name:focus-within {
 }
 
 .statusbar__text[data-state="done"]::before { background: var(--color-ash); }
+
+/* ----------------------------------------------------------------- tooltip */
+
+/* The whole of a name that did not fit. Fixed rather than placed in the flow,
+   so it can stand over a menu, a pane that clips its own contents, or the
+   window's edge. */
+.tip {
+  position: fixed;
+  z-index: 4;
+  max-width: 260px;
+  padding: 6px 8px;
+  background: var(--color-graphite);
+  border-radius: 5px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-input);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: -0.0220em;
+  color: var(--color-chalk);
+  word-break: break-word;
+  pointer-events: none;             /* never stands between the pointer and a click */
+}
 
 [hidden] { display: none !important; }
 
