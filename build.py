@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 WORK = ROOT / "build"
 NAME = "SilkFrame"
+ICON = ROOT / "icon.ico"
 # A statically linked ffmpeg is ~100 MB; anything tiny is a launcher shim or a
 # dynamically linked build, and neither survives being copied on its own.
 STANDALONE = 5 * 2**20
@@ -83,7 +84,7 @@ def build_installer():
         payload += ["--add-data", f"{ROOT / name};{name}"]
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onefile",
-        "--name", f"{NAME}-Setup",
+        "--name", f"{NAME}-Setup", "--icon", str(ICON),
         "--distpath", str(DIST), "--workpath", str(WORK), "--specpath", str(WORK),
         *payload, str(ROOT / "install.py"),
     ], check=True, cwd=ROOT)
@@ -127,7 +128,7 @@ def main():
     started = time.monotonic()
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed",
-        "--name", NAME,
+        "--name", NAME, "--icon", str(ICON),
         "--distpath", str(DIST), "--workpath", str(WORK), "--specpath", str(WORK),
         # pywebview and pythonnet register their own PyInstaller hooks; clr_loader
         # has none, and its ClrLoader.dll is what starts the .NET runtime.
