@@ -18,6 +18,7 @@ from pathlib import Path
 import torch
 
 import video
+from version import __version__
 from rife.model import DEFAULT_MODEL, MODELS, Interpolator, available_devices
 
 
@@ -34,6 +35,7 @@ def parse_args(argv=None):
         description="Synthesise new frames between the frames of a video.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--version", action="version", version=f"SilkFrame {__version__}")
     parser.add_argument("input", nargs="?", help="source video")
     parser.add_argument("-o", "--output", help="destination video (default: <input>.2x.mp4, "
                                                "named after whatever rate you asked for)")

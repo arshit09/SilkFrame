@@ -22,6 +22,8 @@ from pathlib import Path
 import webview
 from webview.dom import DOMEventHandler
 
+from version import __version__
+
 SILKFRAME = Path(__file__).resolve().parent / "silkframe.py"
 KEEP_CONTAINER = {".mp4", ".mkv", ".mov", ".m4v"}
 PROGRESS = re.compile(r"(\d+)/(\d+) frames")
@@ -516,7 +518,7 @@ def main():
         return
     app = App()
     window = webview.create_window(
-        "SilkFrame - double the frames",
+        f"SilkFrame {__version__} - double the frames",
         str(web_root() / "index.html"),
         js_api=Api(app),
         width=1040, height=680, min_size=(860, 620),
