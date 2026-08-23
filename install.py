@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""First run setup for the packaged build, and the launcher after that.
+"""First run setup for the packaged build, the launcher after that, and the
+uninstaller.
 
 The shipped exe is small. Everything heavy - CPython, PyTorch, ffmpeg and the
 RIFE weights - is fetched on first launch from the project that publishes it,
 so no large file has to be hosted alongside the release. It all lands in
 %LOCALAPPDATA%\\SilkFrame and later launches go straight to the window.
+
+Nothing is written outside that one directory, which is what lets the entry in
+Settings > Apps remove the install by deleting it: see register() and
+Uninstaller.
 """
 
 import json
@@ -13,9 +18,11 @@ import queue
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 import urllib.request
+import winreg
 import zipfile
 from pathlib import Path
 from tkinter import ttk
@@ -26,6 +33,15 @@ HOME = Path(os.environ.get("SILKFRAME_HOME") or
             Path(os.environ.get("LOCALAPPDATA", Path.home())) / "SilkFrame")
 MARKER = HOME / "installed.json"
 LOG = HOME / "setup.log"
+WEIGHTS = HOME / "weights"
+PIP_CACHE = HOME / "pip-cache"
+UNINSTALLER = HOME / "uninstall.exe"
+# Where the weights used to go, before they were moved under HOME. An install
+# made before that still has 180 MB sitting there for the uninstaller to take.
+LEGACY_CACHE = Path.home() / ".cache" / "silkframe"
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\SilkFrame"
+REPO = "https://github.com/arshit09/SilkFrame"
+FROM_TEMP = "--uninstall-from-temp"
 
 PYTHON = "3.13.9"
 PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON}/python-{PYTHON}-embed-amd64.zip"
@@ -53,9 +69,17 @@ def child_env():
     from, and pip would then call a torch that is already there - the wrong
     build, in the wrong place - reason enough to install nothing. Clearing them
     here rather than passing flags covers the workers the app starts as well.
+
+    The two cache directories are aimed inside HOME so that removing the
+    install is removing one folder. Left alone, pip keeps its copy of the
+    2.7 GB torch wheel in the cache it shares with every other python on the
+    machine, where nothing else can safely delete it again, and the weights go
+    to ~/.cache/silkframe.
     """
     env = dict(os.environ)
     env["PATH"] = f"{HOME / 'ffmpeg'}{os.pathsep}{env.get('PATH', '')}"
+    env["SILKFRAME_CACHE"] = str(WEIGHTS)
+    env["PIP_CACHE_DIR"] = str(PIP_CACHE)
     env["PYTHONNOUSERSITE"] = "1"
     for name in ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONUSERBASE"):
         env.pop(name, None)
@@ -216,7 +240,13 @@ def install(flavour, announce, report):
         announce(f"{label} ({number} of {len(STEPS)})")
         log(f"--- {label}")
         step(flavour, report) if step is install_packages else step(report)
+    announce("Finishing up")
+    report(None)
+    shutil.rmtree(PIP_CACHE, ignore_errors=True)  # the wheels are unpacked; the cache is dead weight
+    # The marker goes first: it is what says the downloads are done, and an
+    # install that is on disk should not be repeated because a key would not write.
     MARKER.write_text(json.dumps({"version": __version__, "flavour": flavour}), encoding="utf-8")
+    register()
 
 
 def installed():
@@ -225,6 +255,60 @@ def installed():
         return json.loads(MARKER.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def size_of(path):
+    return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+
+
+def human(size):
+    return f"{size / 2**30:.1f} GB" if size >= 2**30 else f"{size >> 20} MB"
+
+
+def register():
+    """Put SilkFrame in Settings > Apps, with an Uninstall button that works.
+
+    The uninstaller is this exe. At install time sys.executable is the setup
+    exe, which already knows every path it would have to delete, so a copy of
+    it under HOME is the whole of it - there is no second program to build or
+    to attach to a release. The entry goes under HKCU rather than HKLM because
+    the install is one user's, under LOCALAPPDATA; that is also why none of
+    this needs an administrator.
+    """
+    if not getattr(sys, "frozen", False):
+        return  # a source checkout has no exe for the entry to point at
+    shutil.copy2(sys.executable, UNINSTALLER)
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY) as key:
+        for name, value in (("DisplayName", "SilkFrame"),
+                            ("DisplayVersion", __version__),
+                            ("DisplayIcon", str(UNINSTALLER)),
+                            ("Publisher", "arshit09"),
+                            ("InstallLocation", str(HOME)),
+                            ("URLInfoAbout", REPO),
+                            ("UninstallString", f'"{UNINSTALLER}" --uninstall')):
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        for name, value in (("EstimatedSize", size_of(HOME) >> 10),  # in KB, as the key wants
+                            ("NoModify", 1), ("NoRepair", 1)):
+            winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, value)
+
+
+def unregister():
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
+    except FileNotFoundError:
+        pass
+
+
+def relaunch_from_temp():
+    """Start the uninstaller again from outside the folder it has to delete.
+
+    Windows holds a running exe open, and this one lives in HOME, so HOME
+    cannot go while it is the thing doing the deleting. The copy left in %TEMP%
+    afterwards is 12 MB and is cleared with the rest of %TEMP%.
+    """
+    copy = Path(tempfile.gettempdir()) / f"SilkFrame-{__version__}-uninstall.exe"
+    shutil.copy2(sys.executable, copy)
+    subprocess.Popen([str(copy), FROM_TEMP])
 
 
 def launch():
@@ -323,11 +407,118 @@ class Setup:
         self.root.mainloop()
 
 
+class Uninstaller:
+    """A small window that names what will go, then deletes it.
+
+    It only ever runs from the copy of itself in %TEMP% - see
+    relaunch_from_temp - so that nothing it is deleting is open at the time.
+    """
+
+    def __init__(self):
+        self.updates = queue.Queue()
+        self.targets = [path for path in (HOME, LEGACY_CACHE) if path.exists()]
+        self.root = tk.Tk()
+        self.root.title(f"Remove SilkFrame {__version__}")
+        self.root.resizable(False, False)
+        frame = ttk.Frame(self.root, padding=20)
+        frame.grid()
+
+        ttk.Label(frame, text="Remove SilkFrame and everything its setup downloaded?",
+                  font=("Segoe UI", 11, "bold")).grid(sticky="w")
+        for path in self.targets:
+            ttk.Label(frame, text=str(path),
+                      wraplength=430, justify="left").grid(sticky="w", pady=(6, 0))
+        # Adding up 22000 files takes about seven seconds, which is seven
+        # seconds of nothing on screen if the window waits for it.
+        self.freed = ttk.Label(frame, text="Working out how much that frees...")
+        self.freed.grid(sticky="w", pady=(6, 0))
+        ttk.Label(frame, wraplength=430, justify="left",
+                  text="The videos SilkFrame has written are kept. They sit beside the "
+                       "files they were made from, not in here.").grid(sticky="w", pady=(12, 0))
+
+        self.status = ttk.Label(frame, text="", wraplength=430, justify="left")
+        self.status.grid(sticky="w", pady=(14, 4))
+        self.bar = ttk.Progressbar(frame, length=430, mode="indeterminate")
+        self.bar.grid(sticky="w")
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(sticky="e", pady=(14, 0))
+        self.cancel = ttk.Button(buttons, text="Cancel", command=self.root.destroy)
+        self.cancel.grid(row=0, column=0, padx=(0, 8))
+        self.button = ttk.Button(buttons, text="Remove", command=self.start)
+        self.button.grid(row=0, column=1)
+
+    def start(self):
+        self.button.state(["disabled"])
+        self.cancel.state(["disabled"])
+        self.bar.start(12)
+        threading.Thread(target=self.work, daemon=True).start()
+
+    def measure(self):
+        try:
+            self.updates.put(("sized", sum(size_of(path) for path in self.targets)))
+        except OSError:
+            pass  # Remove was pressed mid-count; what it would have said no longer matters
+
+    def work(self):
+        try:
+            unregister()
+            # Recomputed rather than taken from self.targets: a first attempt
+            # that stopped on a locked file leaves some of them already gone.
+            for path in [path for path in self.targets if path.exists()]:
+                self.updates.put(("status", f"Removing {path}"))
+                shutil.rmtree(path)
+            self.updates.put(("done", None))
+        except OSError as error:
+            self.updates.put(("failed", str(error)))
+
+    def pump(self):
+        """Drain what the worker thread has said since the last tick."""
+        while True:
+            try:
+                kind, value = self.updates.get_nowait()
+            except queue.Empty:
+                break
+            if kind == "sized":
+                self.freed.configure(text=f"Frees {human(value)}.")
+            elif kind == "status":
+                self.status.configure(text=value)
+            elif kind == "done":
+                self.bar.stop()
+                self.status.configure(text="SilkFrame has been removed.")
+                self.button.configure(text="Close", command=self.root.destroy)
+                self.button.state(["!disabled"])
+                return
+            elif kind == "failed":
+                self.bar.stop()
+                self.status.configure(text=f"Could not finish: {value}\n\n"
+                                           "If SilkFrame is still open, close it and try again.")
+                self.button.configure(text="Try again")
+                self.button.state(["!disabled"])
+                self.cancel.state(["!disabled"])
+                # and no return: the retry has to have something still reading
+        self.root.after(100, self.pump)
+
+    def run(self):
+        threading.Thread(target=self.measure, daemon=True).start()
+        self.pump()
+        self.root.mainloop()
+
+
 def main():
+    if FROM_TEMP in sys.argv:
+        Uninstaller().run()
+        return
+    # Settings > Apps passes --uninstall; the copy in HOME is called
+    # uninstall.exe, so running that means the same thing on its own.
+    if "--uninstall" in sys.argv or Path(sys.executable).resolve() == UNINSTALLER.resolve():
+        relaunch_from_temp()
+        return
     record = installed()
     if record and interpreter().exists():
         if record.get("version") != __version__:
             install_app(lambda fraction: None)  # a new release, same downloads
+            register()  # a fresh uninstall.exe, and the new version in Settings
             MARKER.write_text(json.dumps({**record, "version": __version__}), encoding="utf-8")
         launch()
         return

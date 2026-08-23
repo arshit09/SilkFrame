@@ -41,6 +41,17 @@ on the CPU. The first run downloads a 23 MB checkpoint to `~/.cache/silkframe`
 (override with `SILKFRAME_CACHE`). `python selftest.py` checks the install end
 to end.
 
+## Uninstall
+
+Settings → Apps → Installed apps → SilkFrame → Uninstall. Everything the setup
+downloaded is inside `%LOCALAPPDATA%\SilkFrame` — Python, PyTorch, ffmpeg and
+the weights, around 4.7 GB with CUDA — and removing it is removing that folder,
+which is what the entry does. Nothing else on the machine is touched, and the
+videos SilkFrame has written are kept: they sit beside the files they were made
+from.
+
+A source checkout is the checkout, plus the checkpoints in `~/.cache/silkframe`.
+
 ## The window
 
 `python gui.py` (or `pythonw gui.py` for no console) opens a drop target. Drop
