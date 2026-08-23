@@ -3,6 +3,8 @@
 Multiplies the frames of any video by synthesising new frames between the pairs
 of existing ones, using RIFE v4.25.
 
+![The SilkFrame window](docs/screenshot.png)
+
 ```
 python gui.py                                  # drag and drop window
 python silkframe.py clip.mp4                   # 30 fps -> 60 fps, same length, audio kept
@@ -28,8 +30,6 @@ on the CPU. The first run downloads a 23 MB checkpoint to `~/.cache/silkframe`
 to end.
 
 ## The window
-
-![The SilkFrame window](docs/screenshot.png)
 
 `python gui.py` (or `pythonw gui.py` for no console) opens a drop target. Drop
 one or more videos and they line up in it, one row each, in the order they will
