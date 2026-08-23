@@ -65,15 +65,21 @@
     <aside class="side">
 
       <!-- Who the controls below are set to: every video in the list, or the
-           one whose row was clicked. The second cell is only there once a row
-           has been clicked, and carries that file's name. -->
+           one whose row was clicked. The second cell names that file once one
+           has been picked; pressed before then it takes the file at the head
+           of the line, so both sides of the switch can be reached from here.
+           It is greyed by aria-disabled rather than the disabled attribute,
+           because a disabled button is sent no mouse events at all and so
+           could never hold the tooltip saying why it is grey. -->
       <p class="caption">Settings for</p>
       <div class="seg" role="radiogroup" aria-label="Settings for">
         <button class="seg__cell" id="scope-all" type="button" role="radio"
-                aria-checked="true">All videos</button>
+                aria-checked="true"
+                data-tip="What is set below reaches every video in the list, and the next one dropped">All</button>
         <button class="seg__cell" id="scope-one" type="button" role="radio"
-                aria-checked="false" hidden>
-          <span class="scope__name" id="scope-name"></span>
+                aria-checked="false" aria-disabled="true"
+                data-tip="Nothing in the list to pick, so what is set below reaches every video">
+          <span class="scope__name" id="scope-name">Selected</span>
         </button>
       </div>
 

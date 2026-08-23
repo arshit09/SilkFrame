@@ -140,12 +140,13 @@ document.body.append(tip);
 
 const hideTip = () => { tip.hidden = true; };
 
-function showTip(target) {
-  // A trigger is hovered anywhere across its width, but the value inside it is
-  // the part that was cut.
-  const text = target.querySelector(".select__value") || target;
-  if (text.scrollWidth <= text.clientWidth + 1) return hideTip();
-  tip.textContent = text.textContent;
+// A trigger is hovered anywhere across its width, but the value inside it is
+// the part that was cut.
+const inner = (target) => target.querySelector(".select__value") || target;
+const cut = (target) => inner(target).scrollWidth > inner(target).clientWidth + 1;
+
+function showTip(target, words) {
+  tip.textContent = words;
   tip.hidden = false;
   // Under the text it belongs to, and inside the window on every side: the
   // size is only known once it is on screen, so it is placed after showing.
@@ -156,11 +157,16 @@ function showTip(target) {
 }
 
 // One listener for the window rather than one per element, because the list
-// items are built and thrown away as the pickers are filled.
+// items are built and thrown away as the pickers are filled. A name that was
+// cut short is worth more than any explanation standing behind it, so the two
+// kinds are tried in that order.
 document.addEventListener("mouseover", (event) => {
-  const target = event.target.closest ? event.target.closest(CLIPPED) : null;
-  if (target) showTip(target);
-  else hideTip();
+  if (!event.target.closest) return hideTip();
+  const clipped = event.target.closest(CLIPPED);
+  if (clipped && cut(clipped)) return showTip(clipped, inner(clipped).textContent);
+  const told = event.target.closest("[data-tip]");
+  if (told) return showTip(told, told.dataset.tip);
+  hideTip();
 });
 
 // Nothing sends a mouseover when the text moves out from under a still
@@ -378,14 +384,24 @@ function forget(id) {
 /* Every file carries its own settings, taken from the sidebar as it arrived.
  * Clicking a waiting file brings that set back up in the sidebar, which then
  * edits that file alone until it is let go of - by clicking the row again, by
- * clicking past the end of the list, or by All videos. */
+ * clicking past the end of the list, or by All. */
+
+const firstQueued = () => state.items.find((one) => one.state === "queued");
 
 function mark() {
   const item = state.items.find((one) => one.id === state.target);
   rows.forEach((row, id) => { row.dataset.chosen = String(id === state.target); });
-  // The named cell is only there while there is a file to name.
-  ui.scopeOne.hidden = !item;
-  ui.scopeName.textContent = item ? item.name : "";
+  // The cell carries the file's name once there is one, and stands empty-handed
+  // under its own name until then - greyed out while the line has nothing to
+  // name, and saying as much to a pointer left resting on it.
+  const waiting = firstQueued();
+  ui.scopeName.textContent = item ? item.name : "Selected";
+  ui.scopeOne.setAttribute("aria-disabled", String(!item && !waiting));
+  ui.scopeOne.dataset.tip = item
+    ? "What is set below reaches this video alone"
+    : waiting
+      ? "Press to take the video at the top, or click any row in the list"
+      : "Nothing in the list to pick, so what is set below reaches every video";
   ui.scopeAll.setAttribute("aria-checked", String(!item));
   ui.scopeOne.setAttribute("aria-checked", String(Boolean(item)));
 }
@@ -407,6 +423,17 @@ ui.queue.addEventListener("click", (event) => {
 });
 
 ui.scopeAll.addEventListener("click", () => choose(0));
+
+// The cell is a way into the choice as well as a label for it: pressed with no
+// file picked yet it takes the one at the head of the line, so the side of the
+// switch a file belongs on is never a side there is no way to reach. Pressed
+// while a file is already picked it is the lit half of the switch, and does
+// nothing; letting go is what the other half is for.
+ui.scopeOne.addEventListener("click", () => {
+  if (state.target) return;
+  const first = firstQueued();
+  if (first) choose(first.id);   // nothing waiting: the cell is grey, and a no-op
+});
 
 // ------------------------------------------------------------ dragging a row
 

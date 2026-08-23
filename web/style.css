@@ -529,6 +529,12 @@ button { background: none; border: none; cursor: pointer; }
   color: var(--color-obsidian);
 }
 
+/* Nothing in the line to pick yet, so the cell keeps its place in the track and
+   goes quiet rather than disappearing - the switch has two sides either way. It
+   still takes a pointer, because the tooltip saying why it is grey is on it. */
+.seg__cell[aria-disabled="true"],
+.seg__cell[aria-disabled="true"]:hover { color: var(--color-iron); cursor: default; }
+
 /* The output name, shown the way it will be read back off the disk. */
 .name {
   display: flex;

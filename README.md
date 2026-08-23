@@ -50,14 +50,14 @@ order is right. Each file is written beside its source, as `name.4x.mp4` or
 `name.slowmo.mp4`, after whatever the sidebar was set to when the file was
 added - or after the suffix typed there, if one was. The sidebar picks the
 mode, how many frames come out per frame in, the suffix and which device does
-the work, and it is set either to all of the videos or to one of them. On Whole
-list, whatever is changed there is changed for every waiting file and for the
-ones added next, and only that: setting the factor for all of them leaves each
-one's own suffix where it was. Click a row - or press Picked video, which takes
-the file at the head of the line - and the sidebar names that file, rings its
-row and brings up its own settings instead, so a single queue can hold a 2x
-pass, a 4x on the GPU and an 8x slow motion at once; click the row again, or
-Whole list, to go back. The file being worked on keeps what it started with either way. The
+the work, and it is set either to all of the videos or to one of them. On All,
+whatever is changed there is changed for every waiting file and for the ones
+added next, and only that: setting the factor for all of them leaves each one's
+own suffix where it was. Click a row - or press Selected, which takes the file
+at the head of the line - and the sidebar names that file, rings its row and
+brings up its own settings instead, so a single queue can hold a 2x pass, a 4x
+on the GPU and an 8x slow motion at once; click the row again, or All, to go
+back. The file being worked on keeps what it started with either way. The
 device list fills itself a second or two after the window opens, because naming
 the GPUs means loading torch. Files run one at a time, more can be dropped and
 the ones still waiting reordered while a job is running, and a file that fails
