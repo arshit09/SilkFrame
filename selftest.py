@@ -29,6 +29,15 @@ def run(*args):
     return result.stderr
 
 
+def audio_seconds(path):
+    """The sound's own length, which a stretched track no longer shares with
+    the picture."""
+    listed = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                             "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)],
+                            capture_output=True, text=True).stdout.strip()
+    return float(listed or 0)
+
+
 def check(name, condition, detail=""):
     print(f"  {'PASS' if condition else 'FAIL'}  {name}{'' if condition else '  <- ' + detail}")
     if not condition:
@@ -64,6 +73,14 @@ def main():
     check("slowmo keeps the frame rate", info.fps == 10, str(info.fps))
     check("slowmo doubles the duration", abs(float(info.duration) - 3.9) < 0.1, info.duration)
     check("slowmo drops the audio", not info.has_audio)
+
+    # 3b. or keeps it, stretched either at its own pitch or by slowing the wave
+    for kind, word in (("keep-pitch", "stretched"), ("drop-pitch", "slowed")):
+        out = work / f"moving.{kind}.mp4"
+        run(source, "-o", out, "--mode", "slowmo", "--slowmo-audio", kind)
+        seconds = audio_seconds(out)
+        check(f"slowmo {word} audio is kept", video.VideoInfo(out).has_audio)
+        check(f"slowmo {word} audio is twice as long", abs(seconds - 4.0) < 0.2, str(seconds))
 
     # 4. odd sizes: neither the padding nor the encoder may change them
     source = work / "odd.mkv"

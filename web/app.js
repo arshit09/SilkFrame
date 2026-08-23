@@ -15,6 +15,9 @@ const ui = {
   chooseMore: $("choose-more"),
   note: $("note"),
   suffix: $("suffix"),
+  audioCaption: $("audio-caption"),
+  audioSeg: $("audio"),
+  audioNote: $("audio-note"),
   scopeAll: $("scope-all"),
   scopeOne: $("scope-one"),
   scopeName: $("scope-name"),
@@ -33,13 +36,13 @@ const ui = {
 };
 
 const state = {
-  mode: "fps", factor: 2, device: "auto", suffix: "", busy: false,
+  mode: "fps", factor: 2, device: "auto", suffix: "", audio: "mute", busy: false,
   items: [], running: false, revision: 0,
   // The waiting file the sidebar is set to, or 0 for all of them - and, so
   // they survive a file being chosen and let go of again, a copy of the
   // settings that stand for all.
   target: 0,
-  defaults: { mode: "fps", factor: 2, device: "auto", suffix: "" },
+  defaults: { mode: "fps", factor: 2, device: "auto", suffix: "", audio: "mute" },
 };
 
 // ----------------------------------------------------------------- listboxes
@@ -184,20 +187,34 @@ document.addEventListener("mouseleave", hideTip);
  * the factor for everything leaves each file's own suffix where it was. */
 
 const current = () => ({ mode: state.mode, factor: state.factor,
-                         device: state.device, suffix: state.suffix });
+                         device: state.device, suffix: state.suffix,
+                         audio: state.audio });
+
+// Stretched sound is not the sound that was there, and each way of stretching
+// it is wrong in its own way, so the line under the choice says what will be
+// heard. How each one does it is on the cells themselves, where a line of text
+// costs the column nothing.
+const AUDIO_NOTES = {
+  "keep-pitch": "Same pitch, but it echoes and warbles as it slows.",
+  "drop-pitch": "Deeper: an octave down at 2x, a rumble by 8x.",
+  mute: "No sound track at all.",
+};
 
 // Mode and factor only mean something together - 4x is a doubled rate twice
 // over in one mode and a quarter-speed clip in the other - so the one line
 // that says what they add up to, and the name it would write, are rewritten
-// whenever either of them changes.
+// whenever either of them changes. The sound is only a question in slow motion,
+// where the clip outruns it; a raised frame rate keeps the length and the audio
+// with it, so the whole choice stays out of the way there.
 function describe() {
   const n = state.factor;
-  ui.note.textContent = state.mode === "slowmo"
-    ? `${n}x longer, no audio`
-    : `30 fps becomes ${30 * n}, audio kept`;
-  ui.suffix.placeholder = state.mode === "slowmo"
-    ? (n === 2 ? "slowmo" : `slowmo${n}x`)
-    : `${n}x`;
+  const slowmo = state.mode === "slowmo";
+  ui.note.textContent = slowmo ? `${n}x longer` : `30 fps becomes ${30 * n}`;
+  ui.suffix.placeholder = slowmo ? (n === 2 ? "slowmo" : `slowmo${n}x`) : `${n}x`;
+  ui.audioCaption.hidden = !slowmo;
+  ui.audioSeg.hidden = !slowmo;
+  ui.audioNote.hidden = !slowmo;
+  ui.audioNote.textContent = AUDIO_NOTES[state.audio];
 }
 
 // Every control put back to what the settings on screen say, telling Python
@@ -208,6 +225,9 @@ function draw() {
   });
   document.querySelectorAll("[data-factor]").forEach((cell) => {
     cell.setAttribute("aria-checked", String(Number(cell.dataset.factor) === state.factor));
+  });
+  document.querySelectorAll("[data-audio]").forEach((cell) => {
+    cell.setAttribute("aria-checked", String(cell.dataset.audio === state.audio));
   });
   deviceSelect.show(state.device);
   if (ui.suffix.value !== state.suffix) ui.suffix.value = state.suffix;
@@ -664,6 +684,9 @@ document.querySelectorAll("[data-mode]").forEach((cell) => {
 document.querySelectorAll("[data-factor]").forEach((cell) => {
   cell.addEventListener("click", () => change({ factor: Number(cell.dataset.factor) }));
 });
+document.querySelectorAll("[data-audio]").forEach((cell) => {
+  cell.addEventListener("click", () => change({ audio: cell.dataset.audio }));
+});
 ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 
 // The drop itself is handled in Python, which is the only side that can see the
@@ -689,7 +712,7 @@ ui.suffix.addEventListener("input", () => setSuffix(ui.suffix.value));
 window.addEventListener("pywebviewready", async () => {
   const boot = await window.pywebview.api.boot();
   change({ mode: boot.mode, factor: boot.factor,
-           device: boot.device, suffix: boot.suffix });
+           device: boot.device, suffix: boot.suffix, audio: boot.audio });
   write(boot.greeting);
 });
 

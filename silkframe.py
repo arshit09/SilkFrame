@@ -41,7 +41,16 @@ def parse_args(argv=None):
                                                "named after whatever rate you asked for)")
     parser.add_argument("--mode", choices=("fps", "slowmo"), default="fps",
                         help="fps: raise the frame rate, keep the length and the audio. "
-                             "slowmo: keep the frame rate, stretch the running time, no audio")
+                             "slowmo: keep the frame rate, stretch the running time, and do "
+                             "whatever --slowmo-audio says with the sound")
+    parser.add_argument("--slowmo-audio", choices=("mute", "keep-pitch", "drop-pitch"),
+                        default="mute",
+                        help="what becomes of the sound when the clip is slowed: mute drops it, "
+                             "keep-pitch stretches it to the new length at its own pitch, "
+                             "drop-pitch slows the waveform itself so the pitch falls with it. "
+                             "Either kept track is re-encoded, and neither sounds like the "
+                             "original - the further it is slowed, the rougher it gets. "
+                             "Ignored in fps mode, where the audio is copied as it is")
     rate = parser.add_mutually_exclusive_group()
     rate.add_argument("-f", "--factor", type=int, default=2,
                       help="frames out per frame in: 2 doubles, 3 triples, 4 quadruples")
@@ -215,10 +224,13 @@ def main(argv=None):
               f"is free on the gpu. Expect the driver to spill to system memory and run many times "
               f"slower - rerun with --scale 0.5, or with --device cpu.", file=sys.stderr)
 
-    keep_audio = info.has_audio and args.mode == "fps" and not args.no_audio
+    stretching = args.mode == "slowmo" and args.slowmo_audio != "mute"
+    keep_audio = info.has_audio and not args.no_audio and (args.mode == "fps" or stretching)
+    audio_filter = (video.stretch_audio(args.slowmo_audio, args.factor, info.audio_rate)
+                    if keep_audio and stretching else None)
     writer = video.open_writer(output, info, out_fps, encoder=args.encoder, crf=args.crf,
                               preset=args.preset, pix_fmt=args.pix_fmt, audio=keep_audio,
-                              start=args.start, duration=args.duration)
+                              audio_filter=audio_filter, start=args.start, duration=args.duration)
 
     frames = prefetch(video.read_frames(info, args.start, args.duration))
     progress = Progress(total)
@@ -284,8 +296,14 @@ def main(argv=None):
 
     video.close_writer(writer)
     elapsed = time.monotonic() - progress.start
-    print(f"output {output}: {written} frames @ {float(out_fps):.3f} fps "
-          f"({'audio copied' if keep_audio else 'no audio'})", file=sys.stderr)
+    if not keep_audio:
+        sound = "no audio"
+    elif not audio_filter:
+        sound = "audio copied"
+    else:
+        sound = "audio stretched" if args.slowmo_audio == "keep-pitch" else "audio slowed"
+    print(f"output {output}: {written} frames @ {float(out_fps):.3f} fps ({sound})",
+          file=sys.stderr)
     print(f"done   {read} -> {written} frames in {elapsed:.1f}s "
           f"({read / max(elapsed, 1e-6):.1f} fps in), {cuts} cuts and {stills} still pairs repeated",
           file=sys.stderr)

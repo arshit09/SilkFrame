@@ -147,6 +147,7 @@ class Api:
             "factor": self._app.options["factor"],
             "device": self._app.options["device"],
             "suffix": self._app.options["suffix"],
+            "audio": self._app.options["audio"],
             "greeting": "ready - drop videos, put them in order, then press start",
         }
 
@@ -206,7 +207,8 @@ class App:
         self.loaded = threading.Event()
         self.current = ""
         self.results = []
-        self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": ""}
+        self.options = {"mode": "fps", "factor": 2, "device": "auto", "suffix": "",
+                        "audio": "mute"}
 
     # ---------------------------------------------------------------- startup
 
@@ -419,7 +421,8 @@ class App:
         command = worker_command(str(source), "-o", str(destination),
                                  "--mode", options["mode"],
                                  "--factor", str(options["factor"]),
-                                 "--device", options["device"])
+                                 "--device", options["device"],
+                                 "--slowmo-audio", options["audio"])
         environment = dict(os.environ, PYTHONIOENCODING="utf-8")
         self.process = subprocess.Popen(
             command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,

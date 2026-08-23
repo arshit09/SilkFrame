@@ -85,7 +85,10 @@ class VideoInfo:
         self.variable = bool(average and nominal and abs(nominal - average) > average / 100)
         self.nominal_fps = nominal
         self.frames = self._frame_count(video)
-        self.has_audio = any(s["codec_type"] == "audio" for s in streams)
+        sound = next((s for s in streams if s["codec_type"] == "audio"), None)
+        self.has_audio = sound is not None
+        # Wanted by asetrate, which slows a track by declaring a lower rate.
+        self.audio_rate = int(sound.get("sample_rate") or 48000) if sound else 0
         # Carried over to the encoder so HDR and non-709 clips keep their meaning.
         # "gbr" is dropped: an RGB source has no matrix to hand to a YUV encoder.
         self.color = {
@@ -147,6 +150,26 @@ def trim_options(start, duration):
     if duration:
         options += ["-t", f"{duration:.6f}"]
     return options
+
+
+def stretch_audio(kind, factor, rate):
+    """The -af chain that makes a track `factor` times as long.
+
+    keep-pitch cuts the sound into pieces and overlaps them to fill the extra
+    time, which holds the pitch where it was and is why it echoes; atempo will
+    not go below half speed in one pass, so deeper slowdowns are chained.
+    drop-pitch resamples instead, the way a tape played slow: nothing is
+    invented, and the pitch falls an octave for every doubling.
+    """
+    if kind == "drop-pitch":
+        return f"asetrate={round(rate / factor)},aresample={rate}"
+    steps = []
+    tempo = Fraction(1, factor)
+    while tempo < Fraction(1, 2):
+        steps.append(Fraction(1, 2))
+        tempo *= 2
+    steps.append(tempo)
+    return ",".join(f"atempo={float(step):g}" for step in steps)
 
 
 def span_rate(info, start, duration):
@@ -219,7 +242,7 @@ def read_frames(info, start=None, duration=None):
 
 
 def open_writer(path, info, fps, encoder="libx264", crf=17, preset="slow",
-                pix_fmt="yuv420p", audio=True, start=None, duration=None):
+                pix_fmt="yuv420p", audio=True, audio_filter=None, start=None, duration=None):
     """Start an ffmpeg process that accepts raw RGB frames on stdin."""
     if (info.width % 2 or info.height % 2) and not any(tag in pix_fmt for tag in ("444", "rgb", "gbr")):
         print(f"note: {info.width}x{info.height} has an odd side, "
@@ -233,7 +256,13 @@ def open_writer(path, info, fps, encoder="libx264", crf=17, preset="slow",
     if audio:
         # Copied packets can only start on a packet boundary, so a trimmed audio
         # track begins within a frame or two of where the video does.
-        command += [*trim_options(start, duration), "-i", info.path, "-map", "1:a:0", "-c:a", "copy"]
+        command += [*trim_options(start, duration), "-i", info.path, "-map", "1:a:0"]
+        # A track stretched to a new length has been rewritten, so it cannot be
+        # copied; one that only rides along untouched is never re-encoded.
+        if audio_filter:
+            command += ["-af", audio_filter, "-c:a", "aac", "-b:a", "192k"]
+        else:
+            command += ["-c:a", "copy"]
     command += ["-map", "0:v:0", "-c:v", encoder, "-pix_fmt", pix_fmt]
     if "nvenc" in encoder or "qsv" in encoder or "amf" in encoder:
         command += ["-cq", str(crf), "-preset", preset]

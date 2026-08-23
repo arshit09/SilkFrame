@@ -107,6 +107,24 @@
       </div>
       <p class="note" id="note"></p>
 
+      <!-- Slow motion only, because only a slowed clip leaves the sound with a
+           length to fill. Neither way of filling it sounds like the original,
+           so the line under the row says what the chosen one will sound like,
+           and each cell holds how it goes about it. -->
+      <p class="caption" id="audio-caption" hidden>Audio</p>
+      <div class="seg" role="radiogroup" aria-label="Audio" id="audio" hidden>
+        <button class="seg__cell" type="button" role="radio" data-audio="keep-pitch"
+                aria-checked="false"
+                data-tip="Fitted to the new length at its own pitch, by cutting the sound into pieces and overlapping them">Stretch</button>
+        <button class="seg__cell" type="button" role="radio" data-audio="drop-pitch"
+                aria-checked="false"
+                data-tip="Slowed the way a tape plays slow: nothing is invented, and the pitch falls an octave for every doubling">Slow</button>
+        <button class="seg__cell" type="button" role="radio" data-audio="mute"
+                aria-checked="true"
+                data-tip="The picture is written with no sound track">Mute</button>
+      </div>
+      <p class="note" id="audio-note" hidden></p>
+
       <p class="caption">Suffix</p>
       <label class="name">
         <span class="name__fixed">name.</span>

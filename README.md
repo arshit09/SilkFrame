@@ -49,8 +49,9 @@ run; drag a row to move it, click the cross to drop it, and press start when the
 order is right. Each file is written beside its source, as `name.4x.mp4` or
 `name.slowmo.mp4`, after whatever the sidebar was set to when the file was
 added - or after the suffix typed there, if one was. The sidebar picks the
-mode, how many frames come out per frame in, the suffix and which device does
-the work, and it is set either to all of the videos or to one of them. On All,
+mode, how many frames come out per frame in, what becomes of the sound when a
+clip is slowed, the suffix and which device does the work, and it is set either
+to all of the videos or to one of them. On All,
 whatever is changed there is changed for every waiting file and for the ones
 added next, and only that: setting the factor for all of them leaves each one's
 own suffix where it was. Click a row - or press Selected, which takes the file
@@ -76,7 +77,8 @@ skip the network entirely: repeated frames stay duplicated rather than blurred
 together, and across a shot change the previous frame is repeated rather than
 morphed into the next scene. Otherwise RIFE estimates bidirectional flow and
 blends the two warped frames with a learned mask. Original frames pass through
-to the encoder byte for byte and the audio is copied, not re-encoded. Precision
+to the encoder byte for byte and the audio is copied, not re-encoded - unless a
+slow motion pass is told to stretch it, which rewrites it and so has to. Precision
 is chosen by timing both at startup, because fp16 is a large win on GPUs with
 tensor cores and a large loss on those without them.
 
@@ -101,7 +103,8 @@ over a cross-fade. Reproduce with `python benchmark.py your.mp4 --models all`.
 
 | flag | default | notes |
 | --- | --- | --- |
-| `--mode fps\|slowmo` | `fps` | `fps` raises the rate and keeps the audio; `slowmo` stretches the running time and drops it |
+| `--mode fps\|slowmo` | `fps` | `fps` raises the rate and keeps the audio; `slowmo` stretches the running time, and the sound with it or not, as `--slowmo-audio` says |
+| `--slowmo-audio` | `mute` | slowmo only: `mute` drops the sound, `keep-pitch` stretches it to the new length at its own pitch (it echoes and warbles), `drop-pitch` slows the waveform itself (an octave lower per doubling). A kept track is re-encoded to aac |
 | `--factor`, `-f` | `2` | frames out per frame in; `3` and `4` are the useful ones, `8` works |
 | `--target-fps` | off | an exact rate instead of a whole multiple: `60`, `59.94`, `60000/1001`. fps mode only |
 | `--model` | `4.25` | `4.26`, `4.25.heavy`, `4.26.heavy`, `4.25.lite` |
