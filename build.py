@@ -3,9 +3,15 @@
 
     build.bat              (or: python build.py)
     build.bat nozip        skip the zip step while iterating
+    build.bat installer    the small setup exe instead of the whole bundle
 
 Produces dist\\SilkFrame\\SilkFrame.exe with ffmpeg, the model weights and everything
 else beside it, plus dist\\SilkFrame-windows.zip to hand over.
+
+The installer mode produces dist\\SilkFrame-Setup.exe instead: a few megabytes
+that fetch python, torch, ffmpeg and the weights from the projects that publish
+them, the first time it is run. That is the one small enough to attach to a
+release; the bundle above is several gigabytes.
 """
 
 import argparse
@@ -62,16 +68,50 @@ def size_of(path):
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
+def build_installer():
+    """The small setup exe: the app's source, and nothing that can be downloaded.
+
+    Everything under ROOT that the app needs to run goes in as data rather than
+    as imports, so PyInstaller packs the files without dragging torch and its
+    several gigabytes of cuda libraries in behind them.
+    """
+    started = time.monotonic()
+    payload = []
+    for name in ("gui.py", "silkframe.py", "video.py", "version.py"):
+        payload += ["--add-data", f"{ROOT / name};."]
+    for name in ("rife", "web"):
+        payload += ["--add-data", f"{ROOT / name};{name}"]
+    subprocess.run([
+        sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--onefile",
+        "--name", f"{NAME}-Setup",
+        "--distpath", str(DIST), "--workpath", str(WORK), "--specpath", str(WORK),
+        *payload, str(ROOT / "install.py"),
+    ], check=True, cwd=ROOT)
+
+    setup = DIST / f"{NAME}-Setup.exe"
+    print(f"\nbuilt {setup} in {(time.monotonic() - started) / 60:.1f} min, "
+          f"{size_of(setup) / 2**20:.0f} MiB\n\n"
+          f"Attach that one file to the release. It downloads what it needs the\n"
+          f"first time it is run. Windows will show a SmartScreen warning for an\n"
+          f"unsigned app: More info -> Run anyway.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("nozip", nargs="?", choices=["nozip"], help="skip the zip step")
-    skip_zip = parser.parse_args().nozip == "nozip"
+    parser.add_argument("mode", nargs="?", choices=["nozip", "installer"],
+                        help="nozip: skip the zip step. installer: build the setup exe instead")
+    mode = parser.parse_args().mode
+    skip_zip = mode == "nozip"
 
     if sys.platform != "win32":
         raise SystemExit("this script builds the windows package; run it on windows")
 
     ensure("PyInstaller", "pyinstaller")
+    if mode == "installer":
+        build_installer()
+        return
+
     ensure("webview", "pywebview")
 
     ffmpeg, ffprobe = real_tool("ffmpeg"), real_tool("ffprobe")

@@ -18,6 +18,16 @@ run, and memory use stays flat no matter how long the video is.
 
 ## Install
 
+On Windows, without any of the below: download `SilkFrame-Setup.exe` from the
+[latest release](https://github.com/arshit09/SilkFrame/releases/latest) and run
+it. It asks whether the machine has an NVIDIA card, then fetches Python,
+PyTorch, ffmpeg and the weights from the projects that publish them — about
+3 GB with CUDA, 600 MB without — into `%LOCALAPPDATA%\SilkFrame` and opens the
+window. That happens once; afterwards it starts straight up. Windows shows a
+SmartScreen warning for an unsigned executable — More info, then Run anyway.
+
+From source:
+
 ```
 pip install torch --index-url https://download.pytorch.org/whl/cu128   # or the cpu build
 pip install -r requirements.txt
@@ -133,13 +143,23 @@ over a cross-fade. Reproduce with `python benchmark.py your.mp4 --models all`.
 
 ## Building something to hand over
 
-`build.bat` packages everything with PyInstaller into `dist\SilkFrame\` and zips
-it; `build.bat nozip` skips the slow zip step while iterating. Whoever you give
-it to unzips it and runs `SilkFrame.exe` — no Python, no ffmpeg, no model
-download, because all three are inside. Expect it to be large, nearly all of it
-the CUDA half of PyTorch; building from a CPU-only venv gives a fraction of the
-size and still runs anywhere, just slowly. Windows shows a SmartScreen warning
-for an unsigned executable — More info, then Run anyway.
+`build.bat installer` produces `dist\SilkFrame-Setup.exe`, the 11 MB file the
+release carries. It holds the app's own source and nothing else; `install.py`
+downloads the rest on first run and keeps it in `%LOCALAPPDATA%\SilkFrame`.
+Build it from any checkout — the machine's own PyTorch is not involved, so a
+CPU-only box can build the installer that CUDA users run. Point
+`SILKFRAME_HOME` somewhere else to try an install without touching the real
+one, and read `setup.log` there when one fails.
+
+`build.bat` instead packages everything with PyInstaller into `dist\SilkFrame\`
+and zips it; `build.bat nozip` skips the slow zip step while iterating. Whoever
+you give it to unzips it and runs `SilkFrame.exe` — no Python, no ffmpeg, no
+model download, because all three are inside. Expect it to be large, nearly all
+of it the CUDA half of PyTorch: 4.7 GB unpacked, which is past what a release
+can carry and the reason the installer exists. Building from a CPU-only venv
+gives a fraction of the size and still runs anywhere, just slowly. Windows
+shows a SmartScreen warning for an unsigned executable — More info, then Run
+anyway.
 
 ## Credits
 
