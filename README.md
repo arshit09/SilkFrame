@@ -29,6 +29,8 @@ to end.
 
 ## The window
 
+![The SilkFrame window](docs/screenshot.png)
+
 `python gui.py` (or `pythonw gui.py` for no console) opens a drop target. Drop
 one or more videos and they line up in it, one row each, in the order they will
 run; drag a row to move it, click the cross to drop it, and press start when the
