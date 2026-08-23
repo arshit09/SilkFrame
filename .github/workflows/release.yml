@@ -1,0 +1,29 @@
+# Pushing a v* tag builds the setup exe and publishes it as that tag's release.
+# The runner's own GITHUB_TOKEN does the publishing, so nothing has to be held
+# locally. Only the installer is built here: the full bundle is several
+# gigabytes, past what a release can carry.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python build.py installer
+      - run: >
+          gh release create "$env:GITHUB_REF_NAME"
+          dist/SilkFrame-Setup.exe
+          --title "SilkFrame $($env:GITHUB_REF_NAME -replace '^v', '')"
+          --notes-from-tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

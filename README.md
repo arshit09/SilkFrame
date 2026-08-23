@@ -147,9 +147,10 @@ over a cross-fade. Reproduce with `python benchmark.py your.mp4 --models all`.
 release carries. It holds the app's own source and nothing else; `install.py`
 downloads the rest on first run and keeps it in `%LOCALAPPDATA%\SilkFrame`.
 Build it from any checkout — the machine's own PyTorch is not involved, so a
-CPU-only box can build the installer that CUDA users run. Point
-`SILKFRAME_HOME` somewhere else to try an install without touching the real
-one, and read `setup.log` there when one fails.
+CPU-only box can build the installer that CUDA users run, and pushing a `v*`
+tag runs that same build on a Windows runner and attaches the result to that
+tag's release. Point `SILKFRAME_HOME` somewhere else to try an install without
+touching the real one, and read `setup.log` there when one fails.
 
 `build.bat` instead packages everything with PyInstaller into `dist\SilkFrame\`
 and zips it; `build.bat nozip` skips the slow zip step while iterating. Whoever
