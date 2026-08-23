@@ -64,16 +64,16 @@
 
     <aside class="side">
 
-      <!-- Which file the controls below are set to. Nothing chosen means they
-           are the settings the files added next will take. -->
+      <!-- Who the controls below are set to: every video in the list, or the
+           one whose row was clicked. The second cell is only there once a row
+           has been clicked, and carries that file's name. -->
       <p class="caption">Settings for</p>
-      <div class="scope" id="scope" data-file="false">
-        <span class="scope__name" id="scope-name">videos added next</span>
-        <button class="scope__clear" id="scope-clear" type="button"
-                aria-label="Back to the settings for videos added next">
-          <svg viewBox="0 0 10 10" aria-hidden="true">
-            <path d="M0.7 0.7l8.6 8.6M9.3 0.7l-8.6 8.6"></path>
-          </svg>
+      <div class="seg" role="radiogroup" aria-label="Settings for">
+        <button class="seg__cell" id="scope-all" type="button" role="radio"
+                aria-checked="true">All videos</button>
+        <button class="seg__cell" id="scope-one" type="button" role="radio"
+                aria-checked="false" hidden>
+          <span class="scope__name" id="scope-name"></span>
         </button>
       </div>
 

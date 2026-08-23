@@ -148,12 +148,11 @@ class Api:
             "greeting": "ready - drop videos, put them in order, then press start",
         }
 
-    def set_options(self, item_id, mode, factor, device, suffix):
-        """Settings for one waiting file, or - with no file named - for the
-        files added next."""
-        self._app.configure(int(item_id or 0),
-                            {"mode": mode, "factor": int(factor), "device": device,
-                             "suffix": suffix})
+    def set_options(self, item_id, patch):
+        """The settings that just changed, for one waiting file - or, with no
+        file named, for all of them. Only what changed is sent, so setting the
+        factor for every file leaves each one's own suffix alone."""
+        self._app.configure(int(item_id or 0), dict(patch))
 
     def browse(self):
         chosen = self._app.window.create_file_dialog(
@@ -282,19 +281,25 @@ class App:
             self.revision += 1
         self.publish()
 
-    def configure(self, item_id, options):
-        """Settings belong to one file each: a waiting file named here takes
-        them, and with no file named they are what the files added next will
-        take. A file already being worked on keeps what it started with."""
-        if not item_id:
-            self.options = options
-            return
+    def configure(self, item_id, patch):
+        """Settings belong to one file each. A waiting file named here takes
+        what changed; with no file named, every waiting file takes it and so do
+        the files added next. A file already being worked on keeps what it
+        started with either way, its settings being with the worker already."""
+        if "factor" in patch:
+            patch["factor"] = int(patch["factor"])
         with self.lock:
-            item = next((one for one in self.pending if one["id"] == item_id), None)
-            if item is None:   # started, or dropped, since the page last looked
-                return
-            item["options"] = options
-            item["tag"] = name_tag(options["mode"], options["factor"], options["suffix"])
+            if item_id:
+                taking = [one for one in self.pending if one["id"] == item_id]
+                if not taking:   # started, or dropped, since the page last looked
+                    return
+            else:
+                self.options.update(patch)
+                taking = list(self.pending)
+            for item in taking:
+                item["options"] = {**item["options"], **patch}
+                item["tag"] = name_tag(item["options"]["mode"], item["options"]["factor"],
+                                       item["options"]["suffix"])
             self.revision += 1
         self.publish()
 

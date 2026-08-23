@@ -132,20 +132,30 @@ def main():
               gui.output_for(Path("a/clip.mp4"), "fps", 2, " ?? ").name == "clip.2x.mp4")
 
         # every file carries its own settings: the page names the row it is
-        # showing, and names none of them for the files added next
+        # showing, or names none of them to reach all of them at once
         window = gui.App()
         window.add(["gui.py", "video.py"])
         page = gui.Api(window)
-        page.set_options(2, "slowmo", 4, "cpu", "")
-        page.set_options(0, "fps", 8, "auto", "")
+        page.set_options(2, {"mode": "slowmo", "factor": 4, "device": "cpu"})
         tags = [item["tag"] for item in window.pending]
         check("settings given to one file leave the others alone",
               tags == ["2x", "slowmo4x"], str(tags))
         check("the settings a file carries reach the page",
               window.snapshot()["items"][1]["options"]["device"] == "cpu")
+        page.set_options(0, {"factor": 8})
+        tags = [item["tag"] for item in window.pending]
+        check("a change for all of them reaches every waiting file",
+              tags == ["8x", "slowmo8x"], str(tags))
+        check("and carries only what changed, leaving the rest as each file had it",
+              window.pending[1]["options"]["device"] == "cpu",
+              window.pending[1]["options"]["device"])
         window.add(["silkframe.py"])
-        check("a file added later takes the defaults as they now stand",
+        check("a file added later takes what stands for all of them",
               window.pending[-1]["tag"] == "8x", window.pending[-1]["tag"])
+        window.active = window.pending.pop(0)      # as the worker takes one up
+        page.set_options(0, {"factor": 2})
+        check("the file being worked on keeps what it started with",
+              window.active["options"]["factor"] == 8, str(window.active["options"]))
 
     # 11. a factor above two puts factor-1 new frames in every gap
     moving = work / "moving.mp4"

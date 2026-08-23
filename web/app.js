@@ -15,9 +15,9 @@ const ui = {
   chooseMore: $("choose-more"),
   note: $("note"),
   suffix: $("suffix"),
-  scope: $("scope"),
+  scopeAll: $("scope-all"),
+  scopeOne: $("scope-one"),
   scopeName: $("scope-name"),
-  scopeClear: $("scope-clear"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
@@ -35,9 +35,9 @@ const ui = {
 const state = {
   mode: "fps", factor: 2, device: "auto", suffix: "", busy: false,
   items: [], running: false, revision: 0,
-  // The waiting file the sidebar is set to, or 0 for the settings the files
-  // added next will take - and, so they survive a file being chosen and let go
-  // of again, a copy of those settings.
+  // The waiting file the sidebar is set to, or 0 for all of them - and, so
+  // they survive a file being chosen and let go of again, a copy of the
+  // settings that stand for all.
   target: 0,
   defaults: { mode: "fps", factor: 2, device: "auto", suffix: "" },
 };
@@ -172,19 +172,13 @@ document.addEventListener("mouseleave", hideTip);
 
 // ------------------------------------------------------------------- options
 
-/* The sidebar holds one set of settings at a time: the ones the files added
- * next will take, or - once a waiting file has been clicked - the ones that
- * file is carrying. Everything here edits whichever of the two is on screen,
- * and the id sent alongside is what tells Python which. */
+/* The sidebar is set either to every video in the list or to the one whose row
+ * was clicked, and holds that side's settings. Only what actually changed is
+ * sent, along with the file it belongs to - 0 meaning all of them - so setting
+ * the factor for everything leaves each file's own suffix where it was. */
 
 const current = () => ({ mode: state.mode, factor: state.factor,
                          device: state.device, suffix: state.suffix });
-
-function pushOptions() {
-  if (!window.pywebview) return;
-  window.pywebview.api.set_options(state.target, state.mode, state.factor,
-                                   state.device, state.suffix);
-}
 
 // Mode and factor only mean something together - 4x is a doubled rate twice
 // over in one mode and a quarter-speed clip in the other - so the one line
@@ -216,11 +210,11 @@ function draw() {
 
 function change(patch) {
   Object.assign(state, patch);
-  // The defaults are only ever what the sidebar holds while no file is chosen,
-  // so they are kept up to date here and put back when one is let go of.
+  // What stands for all is only ever what the sidebar holds while no one file
+  // is chosen, so it is kept up to date here and put back when one is let go of.
   if (!state.target) state.defaults = current();
   draw();
-  pushOptions();
+  if (window.pywebview) window.pywebview.api.set_options(state.target, patch);
 }
 
 // Anything Windows will not take in a file name is dropped as it is typed, so
@@ -383,14 +377,17 @@ function forget(id) {
 
 /* Every file carries its own settings, taken from the sidebar as it arrived.
  * Clicking a waiting file brings that set back up in the sidebar, which then
- * edits it until it is let go of - by clicking it again, by clicking past the
- * end of the list, or by the cross beside its name. */
+ * edits that file alone until it is let go of - by clicking the row again, by
+ * clicking past the end of the list, or by All videos. */
 
 function mark() {
   const item = state.items.find((one) => one.id === state.target);
   rows.forEach((row, id) => { row.dataset.chosen = String(id === state.target); });
-  ui.scope.dataset.file = String(Boolean(item));
-  ui.scopeName.textContent = item ? item.name : "videos added next";
+  // The named cell is only there while there is a file to name.
+  ui.scopeOne.hidden = !item;
+  ui.scopeName.textContent = item ? item.name : "";
+  ui.scopeAll.setAttribute("aria-checked", String(!item));
+  ui.scopeOne.setAttribute("aria-checked", String(Boolean(item)));
 }
 
 function choose(id) {
@@ -409,7 +406,7 @@ ui.queue.addEventListener("click", (event) => {
   if (!event.target.closest(".queue__row")) choose(0);
 });
 
-ui.scopeClear.addEventListener("click", () => choose(0));
+ui.scopeAll.addEventListener("click", () => choose(0));
 
 // ------------------------------------------------------------ dragging a row
 
