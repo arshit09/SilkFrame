@@ -24,9 +24,10 @@ On Windows, without any of the below: download `SilkFrame-Setup.exe` from the
 [latest release](https://github.com/arshit09/SilkFrame/releases/latest) and run
 it. It asks whether the machine has an NVIDIA card, then fetches Python,
 PyTorch, ffmpeg and the weights from the projects that publish them — about
-3 GB with CUDA, 600 MB without — into `%LOCALAPPDATA%\SilkFrame` and opens the
-window. That happens once; afterwards it starts straight up. Windows shows a
-SmartScreen warning for an unsigned executable — More info, then Run anyway.
+3 GB with CUDA, 600 MB without — into `%LOCALAPPDATA%\SilkFrame`, puts SilkFrame
+on the desktop and in the Start menu, and opens the window. That happens once;
+afterwards either shortcut starts it straight up. Windows shows a SmartScreen
+warning for an unsigned executable — More info, then Run anyway.
 
 From source:
 
@@ -46,9 +47,9 @@ to end.
 Settings → Apps → Installed apps → SilkFrame → Uninstall. Everything the setup
 downloaded is inside `%LOCALAPPDATA%\SilkFrame` — Python, PyTorch, ffmpeg and
 the weights, around 4.7 GB with CUDA — and removing it is removing that folder,
-which is what the entry does. Nothing else on the machine is touched, and the
-videos SilkFrame has written are kept: they sit beside the files they were made
-from.
+which is what the entry does. The two shortcuts go with it, nothing else on the
+machine is touched, and the videos SilkFrame has written are kept: they sit
+beside the files they were made from.
 
 A source checkout is the checkout, plus the checkpoints in `~/.cache/silkframe`.
 

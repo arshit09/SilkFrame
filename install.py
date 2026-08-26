@@ -7,11 +7,12 @@ RIFE weights - is fetched on first launch from the project that publishes it,
 so no large file has to be hosted alongside the release. It all lands in
 %LOCALAPPDATA%\\SilkFrame and later launches go straight to the window.
 
-Nothing is written outside that one directory, which is what lets the entry in
-Settings > Apps remove the install by deleting it: see register() and
-Uninstaller.
+Apart from the two shortcuts and the entry in Settings > Apps, nothing is
+written outside that one directory, which is what lets the entry remove the
+install by deleting it: see register(), add_shortcuts() and Uninstaller.
 """
 
+import ctypes
 import json
 import os
 import queue
@@ -36,6 +37,7 @@ LOG = HOME / "setup.log"
 WEIGHTS = HOME / "weights"
 PIP_CACHE = HOME / "pip-cache"
 UNINSTALLER = HOME / "uninstall.exe"
+LAUNCHER = HOME / "SilkFrame.exe"
 # Where the weights used to go, before they were moved under HOME. An install
 # made before that still has 180 MB sitting there for the uninstaller to take.
 LEGACY_CACHE = Path.home() / ".cache" / "silkframe"
@@ -246,6 +248,7 @@ def install(flavour, announce, report):
     # The marker goes first: it is what says the downloads are done, and an
     # install that is on disk should not be repeated because a key would not write.
     MARKER.write_text(json.dumps({"version": __version__, "flavour": flavour}), encoding="utf-8")
+    add_shortcuts()
     register()
 
 
@@ -290,6 +293,110 @@ def register():
         for name, value in (("EstimatedSize", size_of(HOME) >> 10),  # in KB, as the key wants
                             ("NoModify", 1), ("NoRepair", 1)):
             winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, value)
+
+
+# Both of the things below are COM, which ctypes reaches by hand. The shortcut
+# half has an obvious alternative - WScript.Shell, one line of powershell - and
+# it cannot be used: see write_shortcut.
+CLSID_SHELL_LINK = "{00021401-0000-0000-C000-000000000046}"
+IID_SHELL_LINK_W = "{000214F9-0000-0000-C000-000000000046}"
+IID_PERSIST_FILE = "{0000010B-0000-0000-C000-000000000046}"
+FOLDERID_DESKTOP = "{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"
+FOLDERID_PROGRAMS = "{A77F5D77-2E2B-44C3-A6A2-ABA601054A51}"
+
+
+def guid(text):
+    """One of the identifiers above, as the sixteen bytes COM wants."""
+    buffer = (ctypes.c_byte * 16)()
+    ctypes.oledll.ole32.CLSIDFromString(text, ctypes.byref(buffer))
+    return ctypes.byref(buffer)
+
+
+def method(obj, slot, *argtypes):
+    """The call sitting at one slot of a COM object's vtable.
+
+    Every one of them takes the object itself first and answers with an
+    HRESULT, and oledll turns a failing HRESULT into an OSError, which is the
+    whole of the error checking these need.
+    """
+    table = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+    return ctypes.WINFUNCTYPE(ctypes.HRESULT, ctypes.c_void_p, *argtypes)(table[slot])
+
+
+def known_folder(folder):
+    """Where Windows says one of its own folders is right now.
+
+    Asked rather than assembled out of the profile: Desktop in particular
+    moves - OneDrive's backup takes it - and a shortcut written to the one
+    that is no longer being shown is a shortcut nobody ever sees.
+    """
+    found = ctypes.c_wchar_p()
+    ctypes.oledll.shell32.SHGetKnownFolderPath(guid(folder), 0, None, ctypes.byref(found))
+    try:
+        return Path(found.value)
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(found)  # the one call here that is not an HRESULT
+
+
+def shortcuts():
+    """The two .lnk files: one on the desktop, one in the Start menu."""
+    return [known_folder(FOLDERID_DESKTOP) / "SilkFrame.lnk",
+            known_folder(FOLDERID_PROGRAMS) / "SilkFrame.lnk"]
+
+
+def write_shortcut(path):
+    """One .lnk at path, pointing at the launcher under HOME.
+
+    Not WScript.Shell, which would be a line of powershell and is the obvious
+    way to do this: it puts every path it is handed through the system ANSI
+    code page first, so on a Western install a profile named in Cyrillic or
+    CJK, or with so much as a Polish l-stroke in it, gets no shortcuts at all,
+    and the assignment that would have named the target throws rather than
+    writes. IShellLinkW takes the wide strings as they are.
+    """
+    link = ctypes.c_void_p()
+    persist = ctypes.c_void_p()
+    ctypes.oledll.ole32.CoCreateInstance(guid(CLSID_SHELL_LINK), None, 1,  # in this process
+                                         guid(IID_SHELL_LINK_W), ctypes.byref(link))
+    try:
+        # The slots taken out of IShellLinkW: SetDescription is the eighth entry
+        # of its vtable, SetWorkingDirectory the tenth and SetPath the twenty first.
+        for slot, value in ((20, str(LAUNCHER)), (9, str(HOME)),
+                            (7, "Smooth or slow down video by synthesising new frames")):
+            method(link, slot, ctypes.c_wchar_p)(link, value)
+        method(link, 0, ctypes.c_void_p, ctypes.c_void_p)(  # QueryInterface
+            link, guid(IID_PERSIST_FILE), ctypes.byref(persist))
+        method(persist, 6, ctypes.c_wchar_p, ctypes.c_int)(persist, str(path), True)  # Save
+    finally:
+        for obj in (persist, link):
+            if obj:
+                method(obj, 2)(obj)  # Release
+
+
+def add_shortcuts():
+    """Put SilkFrame on the desktop and in the Start menu.
+
+    They point at a copy of this exe rather than at pythonw.exe directly: the
+    setup exe was run from wherever it was downloaded to and will not be there
+    for long, and going through it is also what gets a launch the environment
+    child_env() sets up. Running it with no arguments is a launch - see main().
+    """
+    if not getattr(sys, "frozen", False):
+        return  # a source checkout has no exe for the shortcuts to point at
+    try:
+        if Path(sys.executable).resolve() != LAUNCHER.resolve():
+            shutil.copy2(sys.executable, LAUNCHER)  # unless this already is that copy, being run
+        ctypes.oledll.ole32.CoInitialize(None)  # COM is per thread, and this one is a worker
+        try:
+            for path in shortcuts():
+                if path.parent.is_dir():
+                    write_shortcut(path)
+        finally:
+            ctypes.oledll.ole32.CoUninitialize()
+    except OSError as error:
+        # An icon is not worth failing an install that has otherwise finished
+        # over. What went wrong is in the log.
+        log(f"shortcuts not created: {error}")
 
 
 def unregister():
@@ -463,6 +570,8 @@ class Uninstaller:
     def work(self):
         try:
             unregister()
+            for shortcut in shortcuts():
+                shortcut.unlink(missing_ok=True)
             # Recomputed rather than taken from self.targets: a first attempt
             # that stopped on a locked file leaves some of them already gone.
             for path in [path for path in self.targets if path.exists()]:
@@ -518,6 +627,7 @@ def main():
     if record and interpreter().exists():
         if record.get("version") != __version__:
             install_app(lambda fraction: None)  # a new release, same downloads
+            add_shortcuts()  # a launcher carrying this release, not the one it replaced
             register()  # a fresh uninstall.exe, and the new version in Settings
             MARKER.write_text(json.dumps({**record, "version": __version__}), encoding="utf-8")
         launch()
