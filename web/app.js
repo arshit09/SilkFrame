@@ -13,6 +13,8 @@ const ui = {
   count: $("count"),
   choose: $("choose"),
   chooseMore: $("choose-more"),
+  chooseMenu: $("choose-menu"),
+  chooseMoreMenu: $("choose-more-menu"),
   note: $("note"),
   suffix: $("suffix"),
   audioCaption: $("audio-caption"),
@@ -666,18 +668,63 @@ window.app = app;
 
 // ------------------------------------------------------------------- wiring
 
-const browse = (event) => {
-  event.stopPropagation();
-  window.pywebview.api.browse();
+/* Windows shows files or folders in one dialog and never both, so the choose
+ * button drops a two item menu and each item opens the dialog it stands for.
+ * It closes the way every other menu on the page does, through selects. */
+function makePicker(trigger, menu) {
+  const picker = {
+    close() {
+      if (menu.hidden) return;
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    },
+
+    open() {
+      selects.forEach((other) => { if (other !== picker) other.close(); });
+      menu.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+      // Downwards, unless the panel ends before the menu would - the panel
+      // rather than the window, because the panel clips what leaves it, and
+      // the bottom row it hangs under sits on that very edge.
+      const room = ui.drop.getBoundingClientRect().bottom
+                 - trigger.getBoundingClientRect().bottom;
+      menu.dataset.drop = room < menu.offsetHeight + 12 ? "up" : "down";
+    },
+
+    toggle() {
+      if (menu.hidden) picker.open();
+      else picker.close();
+    },
+  };
+
+  // Stopped here, or the click would reach the panel behind and reopen it.
+  menu.querySelectorAll(".select__item").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      picker.close();
+      if (item.dataset.pick === "folder") window.pywebview.api.browse_folder();
+      else window.pywebview.api.browse();
+    });
+  });
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    picker.toggle();
+  });
+  selects.push(picker);
+  return picker;
+}
+
+const pickers = {
+  empty: makePicker(ui.choose, ui.chooseMenu),
+  more: makePicker(ui.chooseMore, ui.chooseMoreMenu),
 };
 
-ui.choose.addEventListener("click", browse);
-ui.chooseMore.addEventListener("click", browse);
-// The panel itself opens the picker too, except over the list, where a click
-// belongs to the row under it.
+// The panel itself drops the menu too - under whichever of the two is on
+// screen - except over the list, where a click belongs to the row under it.
 ui.drop.addEventListener("click", (event) => {
   if (event.target.closest(".queue")) return;
-  window.pywebview.api.browse();
+  event.stopPropagation();
+  pickers[ui.drop.dataset.empty === "true" ? "empty" : "more"].toggle();
 });
 ui.start.addEventListener("click", () => window.pywebview.api.start());
 ui.stop.addEventListener("click", () => window.pywebview.api.stop());

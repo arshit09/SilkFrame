@@ -174,6 +174,17 @@ def main():
         check("the file being worked on keeps what it started with",
               window.active["options"]["factor"] == 8, str(window.active["options"]))
 
+        # a folder dropped stands for the videos under it, and for nothing else
+        (work / "tree" / "inner").mkdir(parents=True)
+        for name in ("b.mp4", "a.mkv", "notes.txt"):
+            (work / "tree" / name).touch()
+        (work / "tree" / "inner" / "c.mov").touch()
+        window = gui.App()
+        window.add([str(work / "tree")])
+        names = [item["name"] for item in window.pending]
+        check("a dropped folder brings in the videos under it",
+              names == ["a.mkv", "b.mp4", "c.mov"], str(names))
+
     # 11. a factor above two puts factor-1 new frames in every gap
     moving = work / "moving.mp4"
     out = work / "moving.4x.mp4"

@@ -228,7 +228,17 @@ button { background: none; border: none; cursor: pointer; }
   pointer-events: none;
 }
 
-.drop__body .pill { pointer-events: auto; margin-top: var(--spacing-4); }
+.drop__body .pick { pointer-events: auto; margin-top: var(--spacing-4); }
+
+/* What the choose button drops: two items, so it is the width of its longest
+   one rather than of the button or link it hangs under. */
+.pick { position: relative; }
+
+.pick .select__menu { right: auto; min-width: 100%; width: max-content; }
+
+.pill .select__caret { stroke: currentColor; }
+
+.pick [aria-expanded="true"] .select__caret { transform: rotate(180deg); }
 
 .drop__title {
   font-size: var(--text-heading-xs);

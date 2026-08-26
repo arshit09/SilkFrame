@@ -4,8 +4,8 @@
     python gui.py          (or pythonw gui.py for no console window)
 
 The interface is plain HTML, CSS and JavaScript in web/, rendered by pywebview
-in a native window. Drop videos on it, put them in the order you want them, and
-press start; each one is written next to its source.
+in a native window. Drop videos - or folders of them - on it, put them in the
+order you want them, and press start; each one is written next to its source.
 """
 
 import ctypes
@@ -31,8 +31,12 @@ NOT_IN_A_NAME = re.compile(r'[<>:"/\\|?*]')
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 FROZEN = getattr(sys, "frozen", False)
 WORKER_FLAG = "--interpolate"
+# What counts as a video when a folder is dropped, and what the file dialog
+# offers - one list, so the two cannot drift apart.
+VIDEO_SUFFIXES = (".mp4", ".mkv", ".mov", ".m4v", ".avi", ".webm", ".wmv",
+                  ".flv", ".mpg", ".mpeg", ".ts", ".m2ts")
 VIDEO_TYPES = (
-    "Video (*.mp4;*.mkv;*.mov;*.m4v;*.avi;*.webm;*.wmv;*.flv;*.mpg;*.mpeg;*.ts;*.m2ts)",
+    "Video ({})".format(";".join(f"*{suffix}" for suffix in VIDEO_SUFFIXES)),
     "All files (*.*)",
 )
 
@@ -72,6 +76,13 @@ def name_tag(mode, factor, suffix):
 def output_for(source, mode, factor, suffix):
     container = source.suffix if source.suffix.lower() in KEEP_CONTAINER else ".mp4"
     return source.with_name(f"{source.stem}.{name_tag(mode, factor, suffix)}{container}")
+
+
+def videos_in(folder):
+    """Every video a dropped folder holds, the folders inside it included, in
+    one settled order rather than whatever the disk happens to hand back."""
+    return sorted(path for path in folder.rglob("*")
+                  if path.suffix.lower() in VIDEO_SUFFIXES and path.is_file())
 
 
 def card(item, state):
@@ -148,7 +159,8 @@ class Api:
             "device": self._app.options["device"],
             "suffix": self._app.options["suffix"],
             "audio": self._app.options["audio"],
-            "greeting": "ready - drop videos, put them in order, then press start",
+            "greeting": "ready - drop videos or folders, put them in order, "
+                        "then press start",
         }
 
     def set_options(self, item_id, patch):
@@ -160,6 +172,14 @@ class Api:
     def browse(self):
         chosen = self._app.window.create_file_dialog(
             webview.FileDialog.OPEN, allow_multiple=True, file_types=VIDEO_TYPES)
+        self._app.add(chosen or [])
+
+    def browse_folder(self):
+        """The other half of browse. Windows shows files or folders in one
+        dialog, never both, so a folder is picked on its own trip - and what
+        comes back is added the same way a dropped folder is."""
+        chosen = self._app.window.create_file_dialog(
+            webview.FileDialog.FOLDER, allow_multiple=True)
         self._app.add(chosen or [])
 
     def start(self):
@@ -261,12 +281,19 @@ class App:
 
     def add(self, paths):
         """Files join the back of the line, carrying the settings the sidebar
-        held as they arrived; nothing runs until start is pressed."""
+        held as they arrived; nothing runs until start is pressed. A folder
+        stands for every video under it, so dropping one queues them all."""
         options = dict(self.options)
         sources = []
         for path in paths:
             source = Path(path)
-            if source.is_file():
+            if source.is_dir():
+                found = videos_in(source)
+                if found:
+                    sources.extend(found)
+                else:
+                    self.push(kind="log", text=f"skipped {source.name}: no videos in it")
+            elif source.is_file():
                 sources.append(source)
             else:
                 self.push(kind="log", text=f"skipped {source.name}: not a file")

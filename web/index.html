@@ -46,14 +46,34 @@
             <rect x="2" y="7" width="28" height="18" rx="1"></rect>
             <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
           </svg>
-          <p class="drop__title">Drop videos here</p>
-          <button class="pill" id="choose" type="button">Choose files</button>
+          <p class="drop__title">Drop videos or folders here</p>
+          <!-- One way in for both: a dialog shows files or folders and never
+               both, so the button drops the pair and each opens its own. -->
+          <div class="pick">
+            <button class="pill" id="choose" type="button"
+                    aria-haspopup="listbox" aria-expanded="false">Choose
+              <svg class="select__caret" viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M2 4l3 3 3-3"></path>
+              </svg>
+            </button>
+            <div class="select__menu" id="choose-menu" role="listbox" hidden>
+              <button class="select__item" type="button" role="option" data-pick="files">Files...</button>
+              <button class="select__item" type="button" role="option" data-pick="folder">Folder...</button>
+            </div>
+          </div>
         </div>
         <div class="queue" id="queue"></div>
         <div class="drop__more">
           <span class="meta" id="count"></span>
           <span class="meta">click one to change it - drag to reorder - drop more, or</span>
-          <button class="drop__link" id="choose-more" type="button">choose files</button>
+          <div class="pick">
+            <button class="drop__link" id="choose-more" type="button"
+                    aria-haspopup="listbox" aria-expanded="false">choose</button>
+            <div class="select__menu" id="choose-more-menu" role="listbox" hidden>
+              <button class="select__item" type="button" role="option" data-pick="files">Files...</button>
+              <button class="select__item" type="button" role="option" data-pick="folder">Folder...</button>
+            </div>
+          </div>
         </div>
       </div>
 
