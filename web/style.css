@@ -476,6 +476,10 @@ button { background: none; border: none; cursor: pointer; }
 .side .caption { padding: var(--spacing-8) 0 var(--spacing-4); }
 .side .caption:first-child { padding-top: 0; }
 
+/* The Selected cell drops the list of waiting videos below the switch, so the
+   switch is what that menu is measured against. */
+.scope { position: relative; }
+
 /* The name of the one file the sidebar is set to, in the cell that says so.
    Long names are cut rather than allowed to widen the column; hovering shows
    the whole of one that was. */
@@ -660,6 +664,13 @@ button { background: none; border: none; cursor: pointer; }
 
 .icon--gold { stroke: var(--color-compass-gold); }
 .icon--lg { width: 28px; height: 28px; }
+
+/* The mark is drawn on the icon's grid, where the bands are twice a hairline
+   wide, and in the icon's gold, which is compass gold lifted a few steps -
+   the palette one is so close to the obsidian that it would read as a gap
+   between the two chalk bands rather than as the band between them. */
+.mark { stroke-width: 3; }
+.mark__gold { stroke: #b9a37e; }
 
 button:focus-visible, .name:focus-within {
   outline: 1px solid var(--color-ash);

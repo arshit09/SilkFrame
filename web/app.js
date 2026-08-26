@@ -21,6 +21,7 @@ const ui = {
   scopeAll: $("scope-all"),
   scopeOne: $("scope-one"),
   scopeName: $("scope-name"),
+  scopeMenu: $("scope-menu"),
   status: $("status"),
   percent: $("percent"),
   fill: $("fill"),
@@ -369,6 +370,10 @@ function render(items, running) {
                                             && item.state === "queued")) choose(0);
   else mark();
 
+  // A file that starts, or is taken out of the line, while the list is open has
+  // to leave it as well; a line with nothing left waiting has nothing to show.
+  if (scopeMenu.open) { if (firstQueued()) scopeMenu.fill(); else scopeMenu.close(); }
+
   ui.drop.dataset.empty = String(items.length === 0);
   ui.count.textContent = items.length
     ? `${items.length} ${items.length === 1 ? "video" : "videos"}`
@@ -402,34 +407,77 @@ function forget(id) {
 // ---------------------------------------------------------- choosing a file
 
 /* Every file carries its own settings, taken from the sidebar as it arrived.
- * Clicking a waiting file brings that set back up in the sidebar, which then
- * edits that file alone until it is let go of - by clicking the row again, by
- * clicking past the end of the list, or by All. */
+ * Bringing one up in the sidebar - by clicking its row, or by taking its name
+ * out of the list the Selected cell drops down - edits that file alone until it
+ * is let go of, by clicking the row again, by clicking past the end of the
+ * list, or by All. */
 
 const firstQueued = () => state.items.find((one) => one.state === "queued");
+
+// The Selected cell is a way into the choice as well as a label for it: it
+// drops down every video still waiting, by name, so the one to be set is picked
+// from the sidebar rather than hunted for in the list. Drawn like the device
+// menu and closed by the same click on the page, because only one menu is ever
+// open - which is why it is registered among them.
+const scopeMenu = {
+  open: false,
+
+  close() {
+    if (!scopeMenu.open) return;
+    scopeMenu.open = false;
+    ui.scopeMenu.hidden = true;
+    ui.scopeOne.setAttribute("aria-expanded", "false");
+  },
+
+  // Only the files still waiting: one that has started is past the point where
+  // its settings mean anything.
+  fill() {
+    ui.scopeMenu.innerHTML = "";
+    state.items.filter((one) => one.state === "queued").forEach((item) => {
+      const entry = document.createElement("button");
+      entry.type = "button";
+      entry.className = "select__item";
+      entry.setAttribute("role", "option");
+      entry.setAttribute("aria-selected", String(item.id === state.target));
+      entry.textContent = item.name;
+      entry.addEventListener("click", () => { scopeMenu.close(); choose(item.id); });
+      ui.scopeMenu.append(entry);
+    });
+  },
+
+  show() {
+    selects.forEach((other) => { if (other !== scopeMenu) other.close(); });
+    scopeMenu.fill();
+    scopeMenu.open = true;
+    ui.scopeMenu.hidden = false;
+    ui.scopeOne.setAttribute("aria-expanded", "true");
+    // Downwards, unless the window ends before the menu would.
+    const room = window.innerHeight - ui.scopeOne.getBoundingClientRect().bottom;
+    ui.scopeMenu.dataset.drop = room < ui.scopeMenu.offsetHeight + 12 ? "up" : "down";
+  },
+};
+
+selects.push(scopeMenu);
 
 function mark() {
   const item = state.items.find((one) => one.id === state.target);
   rows.forEach((row, id) => { row.dataset.chosen = String(id === state.target); });
-  // The cell carries the file's name once there is one, and stands empty-handed
-  // under its own name until then - greyed out while the line has nothing to
-  // name, and saying as much to a pointer left resting on it.
+  // The cell carries the file's name once one has been taken, and stands
+  // empty-handed under its own name until then - greyed out while the line has
+  // nothing to offer, and saying as much to a pointer left resting on it.
   const waiting = firstQueued();
   ui.scopeName.textContent = item ? item.name : "Selected";
-  ui.scopeOne.setAttribute("aria-disabled", String(!item && !waiting));
-  ui.scopeOne.dataset.tip = item
-    ? "What is set below reaches this video alone"
-    : waiting
-      ? "Press to take the video at the top, or click any row in the list"
-      : "Nothing in the list to pick, so what is set below reaches every video";
+  ui.scopeOne.setAttribute("aria-disabled", String(!waiting));
+  ui.scopeOne.dataset.tip = waiting
+    ? "Settings for one video, picked from the list"
+    : "No videos in the list to pick from";
   ui.scopeAll.setAttribute("aria-checked", String(!item));
   ui.scopeOne.setAttribute("aria-checked", String(Boolean(item)));
 }
 
 function choose(id) {
   const item = state.items.find((one) => one.id === id && one.state === "queued");
-  // Clicking the file already on screen is how it is let go of again.
-  const target = item && item.id !== state.target ? item.id : 0;
+  const target = item ? item.id : 0;
   if (target === state.target) return;
   state.target = target;
   Object.assign(state, target ? item.options : state.defaults);
@@ -437,22 +485,28 @@ function choose(id) {
   mark();
 }
 
-// Past the end of the list is still the list, and means none of it.
+// Past the end of the list is still the list, and means none of it - but where
+// the pointer is, rather than what the event calls its target. Pressing a row
+// captures the pointer, so the row keeps it if the press turns into a drag, and
+// a captured pointer hands the click that follows to the queue itself; going by
+// the target alone, every click on a row would read as a click past the end and
+// let go of the file it had just taken.
 ui.queue.addEventListener("click", (event) => {
-  if (!event.target.closest(".queue__row")) choose(0);
+  const under = document.elementFromPoint(event.clientX, event.clientY);
+  if (!under || !under.closest(".queue__row")) choose(0);
 });
 
 ui.scopeAll.addEventListener("click", () => choose(0));
 
-// The cell is a way into the choice as well as a label for it: pressed with no
-// file picked yet it takes the one at the head of the line, so the side of the
-// switch a file belongs on is never a side there is no way to reach. Pressed
-// while a file is already picked it is the lit half of the switch, and does
-// nothing; letting go is what the other half is for.
-ui.scopeOne.addEventListener("click", () => {
-  if (state.target) return;
-  const first = firstQueued();
-  if (first) choose(first.id);   // nothing waiting: the cell is grey, and a no-op
+// Opening the list is what the cell does, whether or not a video is already
+// taken - so the one being set can be swapped for another without letting go of
+// it first. Grey and doing nothing while there is nothing waiting to pick.
+ui.scopeOne.addEventListener("click", (event) => {
+  event.stopPropagation();   // the click on the page is what closes the menus
+  hideTip();                 // and what would otherwise have taken this one down
+  if (!firstQueued()) return;
+  if (scopeMenu.open) scopeMenu.close();
+  else scopeMenu.show();
 });
 
 // ------------------------------------------------------------ dragging a row
@@ -531,8 +585,8 @@ function release() {
   const id = Number(row.dataset.id);
   held = null;
   delete row.dataset.held;
-  if (!live) {                 // a press that went nowhere: the file is chosen
-    choose(id);
+  if (!live) {                 // a press that went nowhere: the file is chosen,
+    choose(id === state.target ? 0 : id);   // or, if it already was, let go of
     return settle();
   }
   // Redrawn from the order it was dropped into, which animates the row out of

@@ -9,10 +9,12 @@
 <div class="app">
 
   <header class="toolbar pywebview-drag-region" id="toolbar">
-    <svg class="icon icon--gold" viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="3" y="9" width="7" height="14" rx="1"></rect>
-      <rect x="12.5" y="9" width="7" height="14" rx="1" stroke-dasharray="2.5 2.5"></rect>
-      <rect x="22" y="9" width="7" height="14" rx="1"></rect>
+    <!-- The mark the exe wears, at the same proportions: one wave drawn three
+         times, half a band apart, so the three flow in phase. -->
+    <svg class="icon mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M4 10.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
+      <path class="mark__gold" d="M4 16c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
+      <path d="M4 21.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
     </svg>
     <span class="toolbar__title">SilkFrame</span>
     <span class="toolbar__spacer"></span>
@@ -64,23 +66,27 @@
 
     <aside class="side">
 
-      <!-- Who the controls below are set to: every video in the list, or the
-           one whose row was clicked. The second cell names that file once one
-           has been picked; pressed before then it takes the file at the head
-           of the line, so both sides of the switch can be reached from here.
-           It is greyed by aria-disabled rather than the disabled attribute,
-           because a disabled button is sent no mouse events at all and so
-           could never hold the tooltip saying why it is grey. -->
+      <!-- Who the controls below are set to: every video in the list, or one
+           taken out of it. The second cell drops the list down so that video is
+           picked by name from here, and then carries the name of the one taken,
+           so both sides of the switch can be reached from this row. It is
+           greyed by aria-disabled rather than the disabled attribute, because a
+           disabled button is sent no mouse events at all and so could never
+           hold the tooltip saying why it is grey. -->
       <p class="caption">Settings for</p>
-      <div class="seg" role="radiogroup" aria-label="Settings for">
-        <button class="seg__cell" id="scope-all" type="button" role="radio"
-                aria-checked="true"
-                data-tip="What is set below reaches every video in the list, and the next one dropped">All</button>
-        <button class="seg__cell" id="scope-one" type="button" role="radio"
-                aria-checked="false" aria-disabled="true"
-                data-tip="Nothing in the list to pick, so what is set below reaches every video">
-          <span class="scope__name" id="scope-name">Selected</span>
-        </button>
+      <div class="scope">
+        <div class="seg" role="radiogroup" aria-label="Settings for">
+          <button class="seg__cell" id="scope-all" type="button" role="radio"
+                  aria-checked="true"
+                  data-tip="Settings for all videos">All</button>
+          <button class="seg__cell" id="scope-one" type="button" role="radio"
+                  aria-checked="false" aria-disabled="true"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  data-tip="No videos in the list to pick from">
+            <span class="scope__name" id="scope-name">Selected</span>
+          </button>
+        </div>
+        <div class="select__menu" id="scope-menu" role="listbox" hidden></div>
       </div>
 
       <p class="caption">Output</p>
