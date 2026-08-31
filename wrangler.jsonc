@@ -1,0 +1,18 @@
+// Publishes docs/ -- the SilkFrame landing page -- as a static-asset Worker on
+// the hostname in CF_SUBDOMAIN. Nothing here is secret; the token, account and
+// zone live in .env, which wrangler reads on its own from the repo root.
+//
+// `custom_domain: true` makes Cloudflare own the DNS record for the hostname,
+// so there is no separate record to create: `wrangler deploy` adds it on the
+// first run and leaves it alone afterwards.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "silkframe",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./docs"
+  },
+  "routes": [
+    { "pattern": "silkframe.arshitvaghasiya.com", "custom_domain": true }
+  ]
+}

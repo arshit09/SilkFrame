@@ -7,3 +7,7 @@ dist/
 
 # scratch clips
 sample*.mp4
+
+# Cloudflare credentials and wrangler's local state
+.env
+.wrangler/

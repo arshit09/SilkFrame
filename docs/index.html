@@ -1,0 +1,1978 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SilkFrame</title>
+<meta name="description" content="SilkFrame multiplies the frames of any video by synthesising new frames between the pairs of existing ones, using RIFE v4.25. Windows app and command line.">
+<link rel="icon" type="image/png" sizes="256x256" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta property="og:title" content="SilkFrame">
+<meta property="og:description" content="More frames than the camera took.">
+<meta property="og:image" content="screenshot.png">
+<meta name="theme-color" content="#101010">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* SilkFrame - the same blueprint scratched into obsidian that the window wears:
+   one palette, hairline strokes, weight 400, and a single gold band. */
+
+:root{
+  color-scheme:dark;
+
+  --obsidian:#101010;
+  --carbon:#080808;
+  --graphite:#212121;
+  --iron:#474747;
+  --slate:#3b3d45;
+  --smoke:#9c9c9c;
+  --ash:#c1c1c1;
+  --chalk:#f3f3f3;
+  --white:#ffffff;
+  --gold:#b9a37e;
+  --gold-deep:#6f6759;
+  --dust:#6b6b6b;        /* iron is too dark to read on obsidian at 11-12px */
+
+  /* Archivo carries a width axis, so the wordmark can be set wide and the
+     running text normal without a second family being dragged in. */
+  --sans:"Archivo","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+
+  --edge:1px solid var(--graphite);
+  --page:1180px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+[hidden]{display:none !important}
+
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+
+body{
+  background:var(--obsidian);
+  color:var(--chalk);
+  font-family:var(--sans);
+  font-variation-settings:"wdth" 100;
+  font-weight:400;
+  font-size:17px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+
+a{color:inherit;text-decoration:none}
+svg{display:block}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+::selection{background:var(--gold);color:var(--carbon)}
+
+:focus-visible{outline:1px solid var(--ash);outline-offset:3px;border-radius:2px}
+
+/* ------------------------------------------------------------- primitives */
+
+.cap{
+  font-family:var(--mono);
+  font-size:12px;
+  font-weight:500;
+  letter-spacing:-0.022em;
+  text-transform:uppercase;
+  color:var(--smoke);
+}
+
+.mono{
+  font-family:var(--mono);
+  font-size:13px;
+  letter-spacing:-0.022em;
+  color:var(--smoke);
+}
+
+.h{
+  font-size:clamp(27px,3.6vw,42px);
+  font-weight:400;
+  font-variation-settings:"wdth" 92;
+  letter-spacing:-0.032em;
+  line-height:1.08;
+  text-wrap:balance;
+  color:var(--chalk);
+}
+
+.sub{
+  margin-top:14px;
+  max-width:46ch;
+  color:var(--smoke);
+  font-size:16px;
+}
+
+.gold{color:var(--gold)}
+
+.icon{
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.pill{
+  display:inline-flex;align-items:center;gap:10px;
+  background:var(--white);color:var(--obsidian);
+  border-radius:9999px;padding:11px 22px;
+  font-family:var(--mono);font-size:13px;font-weight:500;
+  letter-spacing:-0.022em;text-transform:uppercase;
+  transition:opacity 120ms linear,transform 160ms cubic-bezier(.2,.8,.2,1);
+}
+.pill:hover{opacity:.86;transform:translateY(-1px)}
+.pill .icon{stroke-width:1.6;width:15px;height:15px}
+
+.ghost{
+  display:inline-flex;align-items:center;gap:10px;
+  border:1px solid var(--iron);color:var(--chalk);
+  border-radius:9999px;padding:10px 20px;
+  font-family:var(--mono);font-size:13px;
+  letter-spacing:-0.022em;text-transform:uppercase;
+  transition:border-color 120ms linear,color 120ms linear;
+}
+.ghost:hover{border-color:var(--chalk);color:var(--white)}
+.ghost .icon{width:15px;height:15px}
+
+/* ------------------------------------------------------------------ chrome */
+
+.top{
+  position:fixed;inset:0 0 auto 0;z-index:20;
+  height:60px;display:flex;align-items:center;gap:12px;
+  padding:0 24px;
+  border-bottom:1px solid transparent;
+  transition:background 200ms linear,border-color 200ms linear;
+}
+.top[data-stuck="true"]{
+  background:rgba(16,16,16,.86);
+  backdrop-filter:blur(14px);
+  border-bottom-color:var(--graphite);
+}
+.top__mark{width:22px;height:22px;flex:none}
+.top__name{font-size:15px;font-variation-settings:"wdth" 96;letter-spacing:-.01em}
+.top__spacer{flex:1}
+.top__nav{display:flex;gap:22px;margin-right:8px}
+.top__nav a{font-family:var(--mono);font-size:12px;letter-spacing:-.022em;text-transform:uppercase;color:var(--smoke);transition:color 120ms linear}
+.top__nav a:hover{color:var(--chalk)}
+.top .pill{padding:8px 18px}
+@media(max-width:760px){.top__nav{display:none}}
+
+/* ------------------------------------------------------------------- bands */
+
+.band{border-top:var(--edge);position:relative}
+
+.band__in{
+  max-width:var(--page);margin:0 auto;
+  padding:96px 28px;
+  display:grid;grid-template-columns:132px minmax(0,1fr);gap:44px;
+}
+.band__in > *{min-width:0}
+.band__cap{position:sticky;top:88px;align-self:start}
+@media(max-width:900px){
+  .band__in{grid-template-columns:minmax(0,1fr);gap:18px;padding:64px 20px}
+  .band__cap{position:static}
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.hero{
+  position:relative;
+  min-height:min(94vh,880px);
+  display:flex;align-items:center;justify-content:center;
+  padding:120px 24px 72px;
+  overflow:hidden;
+}
+
+/* The panel background from the app itself: dots adrift until something asks
+   them to line up, then a wave runs through the grid they made. */
+.hero__dots{position:absolute;inset:0;width:100%;height:100%}
+
+.hero::after{
+  content:"";position:absolute;inset:auto 0 0 0;height:220px;
+  background:linear-gradient(to bottom,transparent,var(--obsidian));
+  pointer-events:none;
+}
+
+.hero__in{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  gap:26px;
+}
+
+/* The mark, at the size the icon is drawn: the three bands never stop moving. */
+.logo{
+  width:104px;height:104px;border-radius:23px;
+  background:var(--carbon);
+  box-shadow:0 0 0 1px var(--graphite),0 26px 60px rgba(0,0,0,.6);
+  overflow:hidden;
+}
+.logo svg{width:100%;height:100%}
+.logo .band-path{fill:none;stroke:var(--chalk);stroke-width:3;stroke-linecap:round}
+.logo .band-path--gold{stroke:var(--gold)}
+.logo .flow{animation:flow 3.2s linear infinite}
+@keyframes flow{to{transform:translateX(-16px)}}
+
+.wordmark{
+  font-size:clamp(52px,10.5vw,132px);
+  font-weight:500;
+  font-variation-settings:"wdth" 112;
+  letter-spacing:-0.045em;
+  line-height:.92;
+  color:var(--chalk);
+}
+.wordmark em{font-style:normal;color:var(--gold)}
+
+.tagline{
+  /* one line at every width: the size follows the viewport rather than the
+     line breaking */
+  font-size:clamp(16px,5.6vw,25px);
+  font-variation-settings:"wdth" 88;
+  letter-spacing:-0.02em;
+  color:var(--ash);
+  white-space:nowrap;
+}
+
+.hero__acts{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+
+/* --------------------------------------------------------------- the strip */
+
+/* What the tool does, drawn rather than described: the frames the camera took,
+   and the ones invented between them. */
+
+.strip{
+  background:var(--carbon);
+  border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  padding:28px 24px 22px;
+  margin-top:28px;
+}
+
+.strip__rail{
+  position:relative;
+  display:flex;gap:6px;align-items:stretch;
+  height:104px;
+}
+
+.cell{
+  position:relative;flex:1 1 0;min-width:0;
+  border-radius:5px;
+  transition:opacity 260ms cubic-bezier(.2,.8,.2,1),
+             transform 260ms cubic-bezier(.2,.8,.2,1);
+}
+.cell--real{
+  background:#141414;
+  box-shadow:inset 0 0 0 1px var(--iron);
+}
+.cell--made{
+  box-shadow:inset 0 0 0 1px var(--gold-deep);
+  background:rgba(185,163,126,.04);
+}
+.cell--made::before{
+  content:"";position:absolute;inset:0;border-radius:5px;
+  border:1px dashed rgba(185,163,126,.55);
+}
+.cell[data-enter="true"]{opacity:0;transform:scaleY(.72)}
+
+/* The subject: one dot crossing the strip, sampled at every cell. Solid where
+   the camera caught it, ringed where the network guessed it. */
+.cell__dot{
+  position:absolute;left:50%;top:50%;
+  width:13px;height:13px;margin:-6.5px 0 0 -6.5px;
+  border-radius:50%;
+}
+.cell--real .cell__dot{background:var(--chalk)}
+.cell--made .cell__dot{box-shadow:inset 0 0 0 1.5px var(--gold)}
+
+.cell__tick{
+  position:absolute;left:0;right:0;bottom:-18px;
+  text-align:center;
+  font-family:var(--mono);font-size:10px;letter-spacing:-.022em;
+  color:var(--iron);
+}
+.cell--made .cell__tick{color:transparent}
+
+.strip__foot{
+  display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;
+  margin-top:32px;padding-top:18px;border-top:var(--edge);
+}
+
+.factors{display:flex;gap:2px;padding:2px;background:var(--obsidian);border-radius:8px}
+.factors button{
+  padding:7px 15px;border-radius:6px;
+  font-family:var(--mono);font-size:13px;letter-spacing:-.022em;
+  color:var(--smoke);
+  transition:background 120ms linear,color 120ms linear;
+}
+.factors button:hover{color:var(--chalk)}
+.factors button[aria-checked="true"]{background:var(--white);color:var(--obsidian)}
+
+.readout{flex:1;min-width:210px;font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--ash)}
+.readout b{font-weight:400;color:var(--chalk)}
+.warn{width:100%;order:3;display:flex;align-items:center;gap:7px;color:var(--gold);font-family:var(--mono);font-size:12px;letter-spacing:-.022em}
+.warn .icon{width:14px;height:14px;stroke-width:1.6;flex:none}
+
+/* -------------------------------------------------------------- two modes */
+
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px}
+@media(max-width:760px){.modes{grid-template-columns:1fr}}
+
+.mode{
+  background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  padding:26px 24px 24px;
+  display:flex;flex-direction:column;gap:20px;
+  transition:box-shadow 200ms linear;
+}
+.mode:hover{box-shadow:inset 0 0 0 1px var(--iron)}
+.mode__head{display:flex;align-items:center;gap:12px}
+.mode__head .icon{width:26px;height:26px;color:var(--gold);flex:none}
+.mode__name{font-size:19px;font-variation-settings:"wdth" 94;letter-spacing:-.02em}
+.mode .figure{width:100%;height:auto;display:block}
+.mode__note{font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--smoke)}
+.mode__note b{color:var(--chalk);font-weight:400}
+
+.figure .rule{stroke:var(--graphite);stroke-width:1}
+.figure .tick{stroke:var(--ash);stroke-width:1.5;stroke-linecap:round}
+.figure .tick--made{stroke:var(--gold)}
+.figure .tick--made line{opacity:0;transition:opacity 380ms linear}
+.rise.in .figure .tick--made line{opacity:1}
+.rise.in .figure .tick--made line:nth-child(1){transition-delay:280ms}
+.rise.in .figure .tick--made line:nth-child(2){transition-delay:380ms}
+.rise.in .figure .tick--made line:nth-child(3){transition-delay:480ms}
+.rise.in .figure .tick--made line:nth-child(4){transition-delay:580ms}
+.figure .cap-t{fill:var(--iron);font-family:"IBM Plex Mono",monospace;font-size:9px}
+
+/* ------------------------------------------------------------------ chart */
+
+.chart{margin-top:28px}
+
+.chart__key{display:flex;flex-wrap:wrap;gap:10px 22px;margin-bottom:26px}
+.chart__key span{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--smoke)}
+.chart__key i{width:11px;height:11px;border-radius:50%;flex:none}
+
+.rows{display:flex;flex-direction:column}
+
+.row{display:grid;grid-template-columns:136px minmax(0,1fr);align-items:center;gap:16px;padding:10px 0}
+@media(max-width:620px){.row{grid-template-columns:1fr;gap:4px}}
+.row__name{font-size:14.5px;color:var(--ash);font-variation-settings:"wdth" 92}
+
+.track{position:relative;height:36px}
+.track__grid{position:absolute;inset:0;pointer-events:none}
+.track__grid i{position:absolute;top:0;bottom:0;width:1px;background:var(--graphite)}
+.track__line{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--graphite)}
+
+.dot{
+  position:absolute;top:50%;
+  width:26px;height:26px;margin:-13px 0 0 -13px;
+  display:grid;place-items:center;
+  border-radius:50%;
+}
+.dot i{
+  width:12px;height:12px;border-radius:50%;
+  box-shadow:0 0 0 2px var(--obsidian);
+  transition:transform 140ms cubic-bezier(.2,.8,.2,1);
+}
+
+/* The ordinal ramp, and the same order said a second way in the mark itself:
+   an outline, a disc, a larger disc. */
+i.m1{background:transparent;box-shadow:inset 0 0 0 1.6px #6e6558}
+i.m2{background:#8b7c62}
+i.m3{background:#b9a37e}
+.dot i.m1{box-shadow:inset 0 0 0 1.6px #6e6558,0 0 0 2px var(--obsidian)}
+.dot i.m3{width:15px;height:15px}
+.chart__key i.m3{width:13px;height:13px}
+.dot:hover i,.dot:focus-visible i{transform:scale(1.28)}
+.dot::after{
+  content:attr(data-v);
+  position:absolute;bottom:25px;left:50%;transform:translateX(-50%);
+  padding:5px 8px;border-radius:5px;background:var(--graphite);
+  font-family:var(--mono);font-size:11px;letter-spacing:-.022em;
+  color:var(--chalk);white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity 120ms linear;
+  box-shadow:0 10px 24px rgba(0,0,0,.6);
+}
+.dot:hover::after,.dot:focus-visible::after{opacity:1;z-index:2}
+.dot[data-end]::after{left:auto;right:-6px;transform:none}
+
+/* Only the mark that carries the point is labelled on the plot itself. */
+.dot__label{
+  position:absolute;left:22px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:12px;letter-spacing:-.022em;
+  color:var(--gold);white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+
+.axis__row{display:grid;grid-template-columns:136px minmax(0,1fr);gap:16px;margin-top:4px}
+@media(max-width:620px){.axis__row{grid-template-columns:1fr}}
+.axis i:last-child{transform:translateX(-100%)}
+@media(max-width:560px){.dot__label{display:none}}
+.axis{position:relative;height:20px}
+.axis i{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;font-family:var(--mono);font-size:11px;font-style:normal;letter-spacing:-.022em;color:var(--dust);font-variant-numeric:tabular-nums}
+
+.chart__foot{display:flex;align-items:center;gap:18px;margin-top:24px;flex-wrap:wrap}
+.link{
+  font-family:var(--mono);font-size:12px;letter-spacing:-.022em;text-transform:uppercase;
+  color:var(--smoke);border-bottom:1px solid var(--iron);padding-bottom:2px;
+  transition:color 120ms linear,border-color 120ms linear;
+}
+.link:hover{color:var(--chalk);border-color:var(--chalk)}
+
+.scroller{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:460px;margin-top:20px;font-family:var(--mono);font-size:12.5px;letter-spacing:-.022em}
+th,td{text-align:right;padding:9px 12px;border-bottom:var(--edge);font-weight:400;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--smoke);text-transform:uppercase;font-size:11px}
+td{color:var(--ash)}
+td.best{color:var(--gold)}
+
+/* --------------------------------------------------------------- features */
+
+.grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+  margin-top:28px;background:var(--graphite);
+  border:var(--edge);border-radius:10px;overflow:hidden;
+}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+
+.tile{
+  background:var(--obsidian);
+  padding:26px 20px 24px;
+  display:flex;flex-direction:column;gap:13px;
+  transition:background 160ms linear;
+}
+.tile:hover{background:var(--carbon)}
+.tile .icon{width:28px;height:28px;color:var(--gold);flex:none;transition:color 160ms linear}
+.tile:hover .icon{color:var(--chalk)}
+.tile b{font-weight:400;font-size:15.5px;color:var(--chalk);font-variation-settings:"wdth" 94;letter-spacing:-.015em}
+.tile span{font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--smoke);line-height:1.5}
+
+/* ----------------------------------------------------------------- window */
+
+.shot{position:relative;margin-top:28px}
+.shot::before{
+  content:"";position:absolute;inset:-6% 0 8%;
+  background:radial-gradient(60% 60% at 50% 40%,rgba(185,163,126,.12),transparent 70%);
+  filter:blur(30px);pointer-events:none;
+}
+.shot img{
+  position:relative;width:100%;height:auto;display:block;
+  border-radius:10px;
+  box-shadow:0 0 0 1px var(--graphite),0 40px 90px rgba(0,0,0,.65);
+}
+
+/* ---------------------------------------------------------------- install */
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px;counter-reset:step}
+@media(max-width:760px){.steps{grid-template-columns:1fr}}
+
+.step{
+  background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  padding:24px 22px;display:flex;flex-direction:column;gap:13px;
+}
+.step__n{font-family:var(--mono);font-size:11px;letter-spacing:-.022em;color:var(--dust);counter-increment:step}
+.step__n::before{content:counter(step,decimal-leading-zero)}
+.step .icon{width:30px;height:30px;color:var(--gold)}
+.step b{font-weight:400;font-size:16px;color:var(--chalk);font-variation-settings:"wdth" 94}
+.step span{font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--smoke);line-height:1.55}
+
+.term{
+  margin-top:16px;background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);overflow:hidden;
+}
+.term__bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:var(--edge)}
+.term__bar i{width:7px;height:7px;border-radius:50%;background:var(--graphite)}
+.term__bar span{margin-left:6px;font-family:var(--mono);font-size:11px;letter-spacing:-.022em;text-transform:uppercase;color:var(--iron)}
+.term pre{
+  padding:18px 16px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.9;letter-spacing:-.022em;color:var(--ash);
+}
+.term .p{color:var(--dust);user-select:none}
+.term .c{color:var(--dust)}
+.term .f{color:var(--gold)}
+
+/* ----------------------------------------------------------------- footer */
+
+.foot{border-top:var(--edge);padding:44px 28px}
+.foot__in{max-width:var(--page);margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:18px 26px}
+.foot__mark{width:26px;height:26px;flex:none}
+.foot__name{font-size:15px;font-variation-settings:"wdth" 96}
+.foot__sp{flex:1}
+.foot .link{border:none;text-transform:none;font-size:12.5px}
+.credit{width:100%;font-family:var(--mono);font-size:11.5px;letter-spacing:-.022em;color:var(--dust);line-height:1.75}
+.credit a{color:var(--smoke);border-bottom:1px solid var(--graphite)}
+.credit a:hover{color:var(--chalk)}
+
+
+
+/* -------------------------------------------------------------- the demo */
+
+/* The same second of footage slowed, twice: once with the frames that exist
+   held longer, once with the frames SilkFrame writes between them. The dots
+   are where the frames land - chalk for the ones the camera took, gold for
+   the ones the network wrote. */
+
+.demo{
+  background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  margin-top:28px;overflow:hidden;
+}
+
+.demo__bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:var(--edge)}
+.demo__sp{flex:1;min-width:0}
+
+.play{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  padding:7px 15px;border-radius:9999px;
+  box-shadow:inset 0 0 0 1px var(--iron);
+  font-family:var(--mono);font-size:12px;letter-spacing:-.022em;text-transform:uppercase;
+  color:var(--smoke);
+  transition:color 120ms linear,box-shadow 120ms linear;
+}
+.play:hover{color:var(--chalk);box-shadow:inset 0 0 0 1px var(--chalk)}
+.play .icon{width:12px;height:12px}
+
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--graphite)}
+@media(max-width:700px){.panes{grid-template-columns:1fr}}
+
+.pane{background:var(--carbon);padding:16px}
+.pane__head{display:flex;align-items:baseline;gap:10px;margin-bottom:11px}
+.pane__name{font-size:15px;color:var(--ash);font-variation-settings:"wdth" 94;letter-spacing:-.015em}
+.pane--after .pane__name{color:var(--chalk)}
+.pane__rate{margin-left:auto;font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--iron);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pane--after .pane__rate{color:var(--gold)}
+.pane canvas{display:block;width:100%;height:188px;border-radius:6px;background:var(--obsidian)}
+
+.demo__foot{
+  padding:12px 16px;border-top:var(--edge);text-align:center;
+  font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--iron);
+}
+
+/* ------------------------------------------------------------- the bench */
+
+/* The window's two panes, working: the list on the left and the controls that
+   are set against it on the right. Rows drag, rows are chosen, and the sidebar
+   follows whichever of them the settings belong to. */
+
+.bench{display:grid;grid-template-columns:minmax(0,1fr) 252px;gap:16px;margin-top:28px}
+@media(max-width:820px){.bench{grid-template-columns:minmax(0,1fr)}}
+
+.panel{
+  position:relative;
+  background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  min-height:298px;
+  display:flex;flex-direction:column;overflow:hidden;
+  transition:box-shadow 200ms linear;
+}
+.panel[data-catching="true"]{box-shadow:inset 0 0 0 1px var(--white)}
+
+.panel__empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:12px;padding:26px;text-align:center}
+.panel__empty .icon{width:30px;height:30px;color:var(--gold)}
+.panel__empty p{font-size:18px;color:var(--chalk)}
+.bench[data-empty="false"] .panel__empty{display:none}
+.bench[data-empty="true"] .panel__rows,
+.bench[data-empty="true"] .panel__hint{display:none}
+
+/* the folder on its way in */
+.falling{
+  position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;
+  color:var(--gold);opacity:0;transform:translateY(-74px) scale(.86);
+  transition:opacity 360ms linear,transform 520ms cubic-bezier(.2,.8,.2,1);
+  pointer-events:none;
+}
+.falling .icon{width:100%;height:100%}
+.falling[data-in="true"]{opacity:1;transform:none}
+.falling[data-out="true"]{opacity:0;transform:scale(1.6)}
+
+.panel__rows{position:relative;flex:1;min-height:0;padding:12px;display:flex;flex-direction:column;gap:6px}
+
+.brow{
+  position:relative;flex:none;height:40px;
+  display:flex;align-items:center;gap:8px;
+  padding:0 8px 0 4px;border-radius:6px;
+  background:#141414;overflow:hidden;cursor:grab;touch-action:none;
+  transition:transform 240ms cubic-bezier(.2,.8,.2,1),opacity 200ms linear,background 120ms linear;
+}
+.brow[data-state="queued"]:hover{background:var(--graphite)}
+.brow[data-chosen="true"]{background:var(--graphite);box-shadow:inset 0 0 0 1px var(--white)}
+.brow[data-state="running"]{cursor:default;background:#181818}
+.brow[data-held="true"]{transition:none;cursor:grabbing;z-index:1;background:var(--graphite);box-shadow:0 12px 26px rgba(0,0,0,.55)}
+.brow[data-enter="true"]{opacity:0;transform:translateY(-8px)}
+
+/* how far through this one is, as a wash rather than a second bar */
+.brow__fill{position:absolute;inset:0 auto 0 0;width:9%;background:rgba(243,243,243,.06);pointer-events:none;animation:crawl 40s linear infinite}
+@keyframes crawl{from{width:9%}to{width:97%}}
+
+.brow__grip{position:relative;flex:none;width:10px;height:16px;fill:var(--iron);stroke:none}
+.brow:hover .brow__grip{fill:var(--smoke)}
+.brow[data-state="running"] .brow__grip{visibility:hidden}
+
+.brow__place{position:relative;flex:none;width:16px;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--iron)}
+.brow[data-state="running"] .brow__place::before{
+  content:"";position:absolute;left:5px;top:50%;width:6px;height:6px;margin-top:-3px;
+  border-radius:50%;background:var(--chalk);animation:beat 1.6s ease-in-out infinite;
+}
+@keyframes beat{0%,100%{opacity:1}50%{opacity:.2}}
+
+.brow__name{position:relative;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:var(--ash)}
+.brow[data-state="running"] .brow__name,.brow[data-chosen="true"] .brow__name{color:var(--chalk)}
+.brow__tag{position:relative;flex:none;font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--iron)}
+.brow[data-chosen="true"] .brow__tag{color:var(--smoke)}
+
+.panel__hint{flex:none;text-align:center;padding:2px 16px 12px;font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--iron)}
+
+/* the sidebar the list is set from */
+.side{
+  background:var(--carbon);border-radius:10px;
+  box-shadow:inset 0 0 0 1px var(--graphite);
+  padding:16px;display:flex;flex-direction:column;gap:8px;
+}
+.side .cap{padding:8px 0 4px}
+.side .cap:first-child{padding-top:0}
+
+.seg{display:flex;gap:2px;padding:2px;background:var(--obsidian);border-radius:8px}
+.seg button{
+  flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:7px 4px;border-radius:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--smoke);
+  transition:background 120ms linear,color 120ms linear;
+}
+.seg button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seg button .icon{width:15px;height:15px;flex:none}
+.seg button:hover{color:var(--chalk)}
+.seg button[aria-checked="true"]{background:var(--white);color:var(--obsidian)}
+.seg button[aria-disabled="true"],.seg button[aria-disabled="true"]:hover{color:var(--iron);cursor:default}
+
+.side__note{font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--smoke);padding-top:4px}
+.field{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--obsidian);border-radius:8px;font-family:var(--mono);font-size:13px;letter-spacing:-.022em;color:var(--chalk)}
+.field b{font-weight:400;color:var(--iron)}
+.field span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field .icon{width:12px;height:12px;color:var(--smoke);flex:none}
+
+/* three things the list does that a still picture cannot show */
+.facts{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:24px}
+@media(max-width:760px){.facts{grid-template-columns:1fr;gap:12px}}
+.facts li{display:flex;align-items:flex-start;gap:10px;font-family:var(--mono);font-size:12px;letter-spacing:-.022em;color:var(--smoke);line-height:1.5}
+.facts .icon{width:17px;height:17px;color:var(--gold);flex:none;margin-top:1px}
+
+/* ----------------------------------------------------------------- reveal */
+
+.rise{opacity:0;transform:translateY(18px);transition:opacity 620ms cubic-bezier(.2,.8,.2,1),transform 620ms cubic-bezier(.2,.8,.2,1)}
+.rise.in{opacity:1;transform:none}
+
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  .rise{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<!-- The mark the exe wears, defined once and worn everywhere. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 32 32">
+    <rect width="32" height="32" rx="7" fill="#080808"></rect>
+    <path d="M4 10.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0" fill="none" stroke="#f3f3f3" stroke-width="3" stroke-linecap="round"></path>
+    <path d="M4 16c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0" fill="none" stroke="#b9a37e" stroke-width="3" stroke-linecap="round"></path>
+    <path d="M4 21.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0" fill="none" stroke="#f3f3f3" stroke-width="3" stroke-linecap="round"></path>
+  </symbol>
+</svg>
+
+<header class="top" id="top">
+  <svg class="top__mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"></use></svg>
+  <span class="top__name">SilkFrame</span>
+  <span class="top__spacer"></span>
+  <nav class="top__nav">
+    <a href="#what">What it does</a>
+    <a href="#modes">Modes</a>
+    <a href="#queue">Queue</a>
+    <a href="#quality">Quality</a>
+    <a href="#install">Install</a>
+  </nav>
+  <a class="pill" href="https://github.com/arshit09/SilkFrame/releases/latest">
+    <svg class="icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5v15M9.5 13.5 16 20l6.5-6.5M5 26h22"></path></svg>
+    Download
+  </a>
+</header>
+
+<main>
+
+<!-- ------------------------------------------------------------------ hero -->
+<section class="hero">
+  <canvas class="hero__dots" id="dots" aria-hidden="true"></canvas>
+  <div class="hero__in">
+
+    <div class="logo">
+      <svg viewBox="0 0 32 32" role="img" aria-label="SilkFrame">
+        <defs><clipPath id="squircle"><rect width="32" height="32" rx="7"></rect></clipPath></defs>
+        <g clip-path="url(#squircle)">
+          <rect width="32" height="32" fill="#080808"></rect>
+          <g class="flow">
+            <path class="band-path" d="M-28 10.5c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0"></path>
+            <path class="band-path band-path--gold" d="M-28 16c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0"></path>
+            <path class="band-path" d="M-28 21.5c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0c3.3 1.87 4.7 1.87 8 0c3.3-1.87 4.7-1.87 8 0"></path>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <h1 class="wordmark">SilkFrame</h1>
+    <p class="tagline">More frames than the camera took.</p>
+
+    <div class="hero__acts">
+      <a class="pill" href="https://github.com/arshit09/SilkFrame/releases/latest">
+        <svg class="icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 5v15M9.5 13.5 16 20l6.5-6.5M5 26h22"></path></svg>
+        Download for Windows
+      </a>
+      <a class="ghost" href="https://github.com/arshit09/SilkFrame">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path style="fill:currentColor;stroke:none" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1.1.9 2.3v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"></path></svg>
+        Source
+      </a>
+    </div>
+
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------ what it does -->
+<section class="band" id="what">
+  <div class="band__in">
+    <p class="cap band__cap">What it does</p>
+    <div class="rise">
+      <h2 class="h">New frames between the real ones.</h2>
+
+      <div class="strip">
+        <div class="strip__rail" id="rail"></div>
+        <div class="strip__foot">
+          <div class="factors" role="radiogroup" aria-label="Frames out per frame in">
+            <button type="button" role="radio" data-f="2" aria-checked="true">2x</button>
+            <button type="button" role="radio" data-f="3" aria-checked="false">3x</button>
+            <button type="button" role="radio" data-f="4" aria-checked="false">4x</button>
+            <button type="button" role="radio" data-f="8" aria-checked="false">8x</button>
+          </div>
+          <p class="readout" id="readout"></p>
+          <p class="warn" id="warn" hidden>
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4 2 28h28z"></path><path d="M16 13v7M16 24v.01"></path></svg>
+            <span>all seven come from one pair &mdash; look before you trust it</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------------- modes -->
+<section class="band" id="modes">
+  <div class="band__in">
+    <p class="cap band__cap">Two modes</p>
+    <div class="rise">
+      <h2 class="h">Keep the running time, or stretch it.</h2>
+
+      <div class="modes">
+
+        <div class="mode">
+          <div class="mode__head">
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2.5" y="8" width="8.5" height="16" rx="1.5"></rect>
+              <rect x="11.75" y="8" width="8.5" height="16" rx="1.5" stroke-dasharray="2.5 2.5"></rect>
+              <rect x="21" y="8" width="8.5" height="16" rx="1.5"></rect>
+              <circle cx="6.75" cy="16" r="1.7" style="fill:currentColor;stroke:none"></circle>
+              <circle cx="16" cy="16" r="1.7"></circle>
+              <circle cx="25.25" cy="16" r="1.7" style="fill:currentColor;stroke:none"></circle>
+            </svg>
+            <span class="mode__name">Frame rate</span>
+          </div>
+          <svg class="figure" viewBox="0 0 300 100" aria-hidden="true">
+            <text class="cap-t" x="0" y="10">IN &mdash; 30 FPS</text>
+            <line class="rule" x1="2" y1="32" x2="298" y2="32"></line>
+            <g class="tick">
+              <line x1="2" y1="24" x2="2" y2="40"></line>
+              <line x1="76" y1="24" x2="76" y2="40"></line>
+              <line x1="150" y1="24" x2="150" y2="40"></line>
+              <line x1="224" y1="24" x2="224" y2="40"></line>
+              <line x1="298" y1="24" x2="298" y2="40"></line>
+            </g>
+            <text class="cap-t" x="0" y="70">OUT &mdash; 60 FPS</text>
+            <line class="rule" x1="2" y1="88" x2="298" y2="88"></line>
+            <g class="tick">
+              <line x1="2" y1="80" x2="2" y2="96"></line>
+              <line x1="76" y1="80" x2="76" y2="96"></line>
+              <line x1="150" y1="80" x2="150" y2="96"></line>
+              <line x1="224" y1="80" x2="224" y2="96"></line>
+              <line x1="298" y1="80" x2="298" y2="96"></line>
+            </g>
+            <g class="tick tick--made">
+              <line x1="39" y1="80" x2="39" y2="96"></line>
+              <line x1="113" y1="80" x2="113" y2="96"></line>
+              <line x1="187" y1="80" x2="187" y2="96"></line>
+              <line x1="261" y1="80" x2="261" y2="96"></line>
+            </g>
+          </svg>
+          <p class="mode__note">Same length, twice the frames. <b>Audio copied, not touched.</b></p>
+        </div>
+
+        <div class="mode">
+          <div class="mode__head">
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="12"></circle>
+              <path d="M16 9v7l5 3"></path>
+            </svg>
+            <span class="mode__name">Slow motion</span>
+          </div>
+          <svg class="figure" viewBox="0 0 300 100" aria-hidden="true">
+            <text class="cap-t" x="0" y="10">IN &mdash; 1 SECOND</text>
+            <line class="rule" x1="2" y1="32" x2="150" y2="32"></line>
+            <g class="tick">
+              <line x1="2" y1="24" x2="2" y2="40"></line>
+              <line x1="39" y1="24" x2="39" y2="40"></line>
+              <line x1="76" y1="24" x2="76" y2="40"></line>
+              <line x1="113" y1="24" x2="113" y2="40"></line>
+              <line x1="150" y1="24" x2="150" y2="40"></line>
+            </g>
+            <text class="cap-t" x="0" y="70">OUT &mdash; 2 SECONDS</text>
+            <line class="rule" x1="2" y1="88" x2="298" y2="88"></line>
+            <g class="tick">
+              <line x1="2" y1="80" x2="2" y2="96"></line>
+              <line x1="76" y1="80" x2="76" y2="96"></line>
+              <line x1="150" y1="80" x2="150" y2="96"></line>
+              <line x1="224" y1="80" x2="224" y2="96"></line>
+              <line x1="298" y1="80" x2="298" y2="96"></line>
+            </g>
+            <g class="tick tick--made">
+              <line x1="39" y1="80" x2="39" y2="96"></line>
+              <line x1="113" y1="80" x2="113" y2="96"></line>
+              <line x1="187" y1="80" x2="187" y2="96"></line>
+              <line x1="261" y1="80" x2="261" y2="96"></line>
+            </g>
+          </svg>
+          <p class="mode__note">Same rate, twice as long. <b>Sound stretched, dropped in pitch, or muted.</b></p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------ before/after -->
+<section class="band" id="demo">
+  <div class="band__in">
+    <p class="cap band__cap">Before / after</p>
+    <div class="rise">
+      <h2 class="h">Slow a clip down and the gaps show.</h2>
+
+      <div class="demo">
+        <div class="demo__bar">
+          <span class="demo__sp"></span>
+          <button class="play" type="button" id="demo-play" aria-pressed="true">
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true" id="demo-pause-icon">
+              <path d="M12 8v16M20 8v16"></path>
+            </svg>
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true" id="demo-play-icon" hidden>
+              <path d="M11 7l14 9-14 9z"></path>
+            </svg>
+            <span id="demo-play-label">Pause</span>
+          </button>
+        </div>
+
+        <div class="panes">
+          <div class="pane">
+            <div class="pane__head">
+              <span class="pane__name">Frames repeated</span>
+              <span class="pane__rate">30 fps</span>
+            </div>
+            <canvas id="demo-a" role="img" aria-label="A subject tracing a figure of eight, stepping from one held frame to the next"></canvas>
+          </div>
+          <div class="pane pane--after">
+            <div class="pane__head">
+              <span class="pane__name">Frames invented</span>
+              <span class="pane__rate">120 fps</span>
+            </div>
+            <canvas id="demo-b" role="img" aria-label="The same subject on the same path, moving smoothly, with the invented frames marked in gold between the real ones"></canvas>
+          </div>
+        </div>
+
+        <p class="demo__foot">one second of 30 fps footage, played at &frac14; speed &mdash; 30 real frames, 90 written</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------------- queue -->
+<section class="band" id="queue">
+  <div class="band__in">
+    <p class="cap band__cap">The queue</p>
+    <div class="rise">
+      <h2 class="h">Drop a folder in. Set each file its own way.</h2>
+
+      <div class="bench" id="bench" data-empty="true">
+
+        <div class="panel" id="panel">
+          <div class="falling" id="falling">
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+              <path d="M3 25V8a1 1 0 0 1 1-1h8l3 4h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path>
+              <path d="M11 16h10M16 12.5v7"></path>
+            </svg>
+          </div>
+
+          <div class="panel__empty">
+            <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+              <rect x="2" y="7" width="28" height="18" rx="1.5"></rect>
+              <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
+            </svg>
+            <p>Drop videos or folders here</p>
+          </div>
+
+          <div class="panel__rows" id="qrows"></div>
+          <p class="panel__hint">click one to change it &mdash; drag to reorder</p>
+        </div>
+
+        <aside class="side">
+          <p class="cap">Settings for</p>
+          <div class="seg" role="radiogroup" aria-label="Settings for">
+            <button type="button" role="radio" id="q-all" aria-checked="true">All</button>
+            <button type="button" role="radio" id="q-one" aria-checked="false" aria-disabled="true">
+              <span id="q-one-name">Selected</span>
+            </button>
+          </div>
+
+          <p class="cap">Output</p>
+          <div class="seg" role="radiogroup" aria-label="Output">
+            <button type="button" role="radio" data-qmode="fps" aria-checked="true">
+              <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M6 7v18M26 7v18"></path>
+                <path d="M16 7v18" stroke-dasharray="3 3"></path>
+              </svg>Frame rate
+            </button>
+            <button type="button" role="radio" data-qmode="slowmo" aria-checked="false">
+              <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+                <circle cx="16" cy="16" r="12"></circle>
+                <path d="M16 9v7l5 3"></path>
+              </svg>Slow motion
+            </button>
+          </div>
+
+          <div class="seg" role="radiogroup" aria-label="Frames out per frame in">
+            <button type="button" role="radio" data-qf="2" aria-checked="true">2x</button>
+            <button type="button" role="radio" data-qf="3" aria-checked="false">3x</button>
+            <button type="button" role="radio" data-qf="4" aria-checked="false">4x</button>
+            <button type="button" role="radio" data-qf="8" aria-checked="false">8x</button>
+          </div>
+          <p class="side__note" id="q-note">30 fps becomes 60</p>
+
+          <p class="cap" id="q-audio-cap" hidden>Audio</p>
+          <div class="seg" role="radiogroup" aria-label="Audio" id="q-audio" hidden>
+            <button type="button" role="radio" data-qa="keep-pitch" aria-checked="false">Stretch</button>
+            <button type="button" role="radio" data-qa="drop-pitch" aria-checked="false">Slow</button>
+            <button type="button" role="radio" data-qa="mute" aria-checked="true">Mute</button>
+          </div>
+          <p class="side__note" id="q-audio-note" hidden></p>
+
+          <p class="cap">Suffix</p>
+          <div class="field"><b>name.</b><span id="q-suffix">2x</span></div>
+
+          <p class="cap">Device</p>
+          <div class="field">
+            <span id="q-device">Auto</span>
+            <svg class="icon" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 4l3 3 3-3"></path></svg>
+          </div>
+        </aside>
+
+      </div>
+
+      <ul class="facts">
+        <li>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 4v15M10 13.5l6 6 6-6"></path><path d="M5 27h22"></path>
+          </svg>
+          <span>Drop more in, and reorder the ones still waiting, while a job runs.</span>
+        </li>
+        <li>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12"></circle><path d="M16 10v8M16 21.5v.01"></path>
+          </svg>
+          <span>One file fails, it is logged, and the rest of the line carries on.</span>
+        </li>
+        <li>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="12"></circle>
+            <path d="M13 11.5v9M19 11.5v9"></path>
+          </svg>
+          <span>Stop returns that file to the head of the line. Start picks the order back up.</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------------------- quality -->
+<section class="band" id="quality">
+  <div class="band__in">
+    <p class="cap band__cap">Quality</p>
+    <div class="rise">
+      <h2 class="h">Checked against the frame that was really there.</h2>
+      <p class="sub">The middle frame of a triplet is hidden, rebuilt from its two neighbours, then compared with the original. Mean PSNR over 25 triplets per clip, 720p.</p>
+
+      <div class="chart">
+        <div class="chart__key">
+          <span><i class="m1"></i>repeat previous frame</span>
+          <span><i class="m2"></i>cross-fade both frames</span>
+          <span><i class="m3"></i>RIFE 4.25</span>
+        </div>
+
+        <div class="rows">
+
+          <div class="row">
+            <span class="row__name">Sintel</span>
+            <div class="track">
+              <div class="track__grid">
+                <i style="left:9.091%"></i><i style="left:31.818%"></i><i style="left:54.545%"></i><i style="left:77.273%"></i><i style="left:100%"></i>
+              </div>
+              <div class="track__line"></div>
+              <div class="dot" style="left:11.727%" tabindex="0" data-v="repeat previous &middot; 20.58 dB"><i class="m1"></i></div>
+              <div class="dot" style="left:22.591%" tabindex="0" data-v="cross-fade &middot; 22.97 dB"><i class="m2"></i></div>
+              <div class="dot" style="left:38.636%;z-index:1" tabindex="0" data-v="RIFE 4.25 &middot; 26.50 dB"><i class="m3"></i><span class="dot__label">26.50</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="row__name">Big Buck Bunny</span>
+            <div class="track">
+              <div class="track__grid">
+                <i style="left:9.091%"></i><i style="left:31.818%"></i><i style="left:54.545%"></i><i style="left:77.273%"></i><i style="left:100%"></i>
+              </div>
+              <div class="track__line"></div>
+              <div class="dot" data-end style="left:65.591%" tabindex="0" data-v="repeat previous &middot; 32.43 dB"><i class="m1"></i></div>
+              <div class="dot" data-end style="left:85.273%" tabindex="0" data-v="cross-fade &middot; 36.76 dB"><i class="m2"></i></div>
+              <div class="dot" data-end style="left:87%;z-index:1" tabindex="0" data-v="RIFE 4.25 &middot; 37.14 dB"><i class="m3"></i><span class="dot__label">37.14</span></div>
+            </div>
+          </div>
+
+          <div class="row">
+            <span class="row__name">Jellyfish</span>
+            <div class="track">
+              <div class="track__grid">
+                <i style="left:9.091%"></i><i style="left:31.818%"></i><i style="left:54.545%"></i><i style="left:77.273%"></i><i style="left:100%"></i>
+              </div>
+              <div class="track__line"></div>
+              <div class="dot" style="left:40.545%" tabindex="0" data-v="repeat previous &middot; 26.92 dB"><i class="m1"></i></div>
+              <div class="dot" data-end style="left:60.455%" tabindex="0" data-v="cross-fade &middot; 31.30 dB"><i class="m2"></i></div>
+              <div class="dot" data-end style="left:88.636%;z-index:1" tabindex="0" data-v="RIFE 4.25 &middot; 37.50 dB"><i class="m3"></i><span class="dot__label">37.50</span></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="axis__row">
+          <span class="mono" style="font-size:11px;color:var(--dust)">PSNR dB</span>
+          <div class="axis">
+            <i style="left:9.091%">20</i><i style="left:31.818%">25</i><i style="left:54.545%">30</i><i style="left:77.273%">35</i><i style="left:100%">40</i>
+          </div>
+        </div>
+
+        <div class="chart__foot">
+          <button class="link" type="button" id="numbers" aria-expanded="false" aria-controls="table">Numbers</button>
+          <a class="link" href="https://github.com/arshit09/SilkFrame#quality">How it was measured</a>
+        </div>
+
+        <div class="scroller" id="table" hidden>
+          <table>
+            <thead>
+              <tr><th>Method</th><th>Sintel</th><th>Big Buck Bunny</th><th>Jellyfish</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>repeat previous frame</td><td>20.58</td><td>32.43</td><td>26.92</td></tr>
+              <tr><td>cross-fade both frames</td><td>22.97</td><td>36.76</td><td>31.30</td></tr>
+              <tr><td>RIFE 4.25</td><td class="best">26.50</td><td class="best">37.14</td><td class="best">37.50</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------------- features -->
+<section class="band" id="features">
+  <div class="band__in">
+    <p class="cap band__cap">Features</p>
+    <div class="rise">
+      <h2 class="h">The awkward parts, already handled.</h2>
+
+      <div class="grid">
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="11"></circle>
+            <circle cx="16" cy="16" r="3.5"></circle>
+            <path d="M16 2v4M16 26v4M2 16h4M26 16h4"></path>
+          </svg>
+          <b>Exact rates</b>
+          <span>Not only whole multiples: 60, 59.94, or 60000/1001 on the nose.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="10" width="28" height="12" rx="1.5"></rect>
+            <path d="M11 10v12M21 10v12"></path>
+            <path d="M14 16h4"></path>
+          </svg>
+          <b>Try ten seconds</b>
+          <span>Render a slice to check the settings before the whole clip.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="9" y="9" width="14" height="14" rx="2"></rect>
+            <path d="M13 4v5M19 4v5M13 23v5M19 23v5M4 13h5M4 19h5M23 13h5M23 19h5"></path>
+          </svg>
+          <b>GPU or CPU</b>
+          <span>Takes the card with the most free memory. Falls back on its own.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M3 14v4M9 10v12M15 5v22M21 11v10M27 14v4"></path>
+          </svg>
+          <b>Audio kept</b>
+          <span>Copied byte for byte, not re-encoded &mdash; unless you stretch it.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="3" y="8" width="11" height="16" rx="1.5"></rect>
+            <rect x="18" y="8" width="11" height="16" rx="1.5"></rect>
+            <path d="M16 5v22" stroke-dasharray="2.5 3"></path>
+          </svg>
+          <b>Cuts respected</b>
+          <span>A shot change repeats rather than morphing one scene into the next.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M5 5v22h22"></path>
+            <path d="M9 18h18"></path>
+            <path d="M9 22v-8M15 22v-8M21 22v-8M27 22v-8"></path>
+          </svg>
+          <b>Flat memory</b>
+          <span>A two-hour file costs what a ten-second one does. Frames stream.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2" y="7" width="28" height="18" rx="1.5"></rect>
+            <path d="M2 12h4M2 20h4M26 12h4M26 20h4M11 7v18M21 7v18"></path>
+          </svg>
+          <b>Anything ffmpeg reads</b>
+          <span>mp4, mkv, mov, webm, ts. Rotated phone video arrives upright.</span>
+        </div>
+
+        <div class="tile">
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M10 21H8a5.5 5.5 0 0 1 .6-11 8 8 0 0 1 15 1.5A5 5 0 0 1 23.5 21H22"></path>
+            <path d="M16 14v13M11.5 22.5 16 27l4.5-4.5"></path>
+          </svg>
+          <b>Weights fetch themselves</b>
+          <span>23 MB on the first run, cached after. Nothing to place by hand.</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- window -->
+<section class="band" id="window">
+  <div class="band__in">
+    <p class="cap band__cap">The window</p>
+    <div class="rise">
+      <h2 class="h">Drop, order, start.</h2>
+      <div class="shot">
+        <img src="screenshot.png" alt="The SilkFrame window: a dark drop panel holding the queue, a sidebar of settings, and a log" width="1024" height="641" loading="lazy">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------------------- install -->
+<section class="band" id="install">
+  <div class="band__in">
+    <p class="cap band__cap">Install</p>
+    <div class="rise">
+      <h2 class="h">One file, one question.</h2>
+
+      <div class="steps">
+
+        <div class="step">
+          <span class="step__n"></span>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M16 4v16M9 13l7 7 7-7"></path>
+            <path d="M5 27h22"></path>
+          </svg>
+          <b>Run the setup</b>
+          <span>SilkFrame-Setup.exe, 11 MB, from the latest release.</span>
+        </div>
+
+        <div class="step">
+          <span class="step__n"></span>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="6" y="8" width="20" height="16" rx="2"></rect>
+            <path d="M16 4v4M11 24v4M21 24v4"></path>
+            <path d="M13.6 14.2a2.6 2.6 0 1 1 2.6 2.6v1.4"></path>
+            <path d="M16.2 20.6v.01"></path>
+          </svg>
+          <b>Answer one question</b>
+          <span>NVIDIA card, yes or no. That is the whole of the setup.</span>
+        </div>
+
+        <div class="step">
+          <span class="step__n"></span>
+          <svg class="icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M4 11 16 5l12 6-12 6z"></path>
+            <path d="M4 11v10l12 6 12-6V11"></path>
+            <path d="M16 17v10"></path>
+          </svg>
+          <b>It fetches the rest</b>
+          <span>Python, PyTorch, ffmpeg, weights. 3 GB with CUDA, 600 MB without.</span>
+        </div>
+
+      </div>
+
+      <div class="term">
+        <div class="term__bar"><i></i><i></i><i></i><span>or from source</span></div>
+        <pre><span class="p">$</span> pip install -r requirements.txt
+<span class="p">$</span> python gui.py                                  <span class="c"># the window</span>
+<span class="p">$</span> python silkframe.py clip.mp4                   <span class="c"># 30 -&gt; 60 fps, audio kept</span>
+<span class="p">$</span> python silkframe.py clip.mp4 <span class="f">--factor 4</span>        <span class="c"># 30 -&gt; 120 fps</span>
+<span class="p">$</span> python silkframe.py clip.mp4 <span class="f">--target-fps 60</span>   <span class="c"># 23.976 -&gt; exactly 60</span>
+<span class="p">$</span> python silkframe.py clip.mp4 <span class="f">--mode slowmo</span>     <span class="c"># half speed, twice as long</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot__in">
+    <svg class="foot__mark" viewBox="0 0 32 32" aria-hidden="true"><use href="#mark"></use></svg>
+    <span class="foot__name">SilkFrame</span>
+    <span class="mono">1.2.0</span>
+    <span class="foot__sp"></span>
+    <a class="link" href="https://github.com/arshit09/SilkFrame">GitHub</a>
+    <a class="link" href="https://github.com/arshit09/SilkFrame/releases/latest">Releases</a>
+    <a class="link" href="https://github.com/arshit09/SilkFrame#options">Options</a>
+    <p class="credit">
+      RIFE is by Huang et al. (ECCV 2022); the checkpoints are the official
+      <a href="https://github.com/hzwer/Practical-RIFE">Practical-RIFE</a> releases,
+      mirrored by <a href="https://github.com/HolyWu/vs-rife">vs-rife</a>.
+      The network here is an inference-only port of their IFNet_HDv3, weights loaded unmodified.
+    </p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ------------------------------------------------------------- the bar */
+
+  var bar = document.getElementById("top");
+  function stuck() { bar.dataset.stuck = String(window.scrollY > 24); }
+  window.addEventListener("scroll", stuck, { passive: true });
+  stuck();
+
+  /* ---------------------------------------------------------- the reveal */
+
+  var rising = document.querySelectorAll(".rise");
+  if (still || !("IntersectionObserver" in window)) {
+    rising.forEach(function (el) { el.classList.add("in"); });
+  } else {
+    var eye = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("in");
+        eye.unobserve(entry.target);
+      });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    rising.forEach(function (el) { eye.observe(el); });
+  }
+
+  /* ----------------------------------------------------------- the strip */
+
+  /* Three frames the camera took, and between each pair the ones the network
+     writes. The dot is the same subject sampled at every cell, so the arc it
+     traces is the whole argument. */
+
+  var REAL = 3;
+  var rail = document.getElementById("rail");
+  var readout = document.getElementById("readout");
+  var warn = document.getElementById("warn");
+  var factors = [].slice.call(document.querySelectorAll(".factors button"));
+
+  function drawStrip(factor) {
+    var count = REAL + (REAL - 1) * (factor - 1);
+    var shot = 0;
+    rail.textContent = "";
+
+    for (var i = 0; i < count; i += 1) {
+      var made = i % factor !== 0;
+      var cell = document.createElement("div");
+      cell.className = "cell " + (made ? "cell--made" : "cell--real");
+
+      var t = i / (count - 1);
+      var dot = document.createElement("span");
+      dot.className = "cell__dot";
+      dot.style.left = (22 + 56 * t) + "%";
+      dot.style.top = (74 - 46 * Math.sin(Math.PI * t)) + "%";
+      cell.appendChild(dot);
+
+      if (!made) {
+        shot += 1;
+        var tick = document.createElement("span");
+        tick.className = "cell__tick";
+        tick.textContent = shot < 10 ? "0" + shot : String(shot);
+        cell.appendChild(tick);
+      }
+
+      rail.appendChild(cell);
+
+      if (made && !still) {
+        cell.dataset.enter = "true";
+        (function (node, index) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              node.style.transitionDelay = (index * 20) + "ms";
+              node.dataset.enter = "false";
+            });
+          });
+        }(cell, i));
+      }
+    }
+
+    readout.innerHTML = "30 fps &rarr; <b>" + 30 * factor + " fps</b> &nbsp;&middot;&nbsp; "
+      + (factor - 1) + " invented frame" + (factor > 2 ? "s" : "") + " per pair";
+    warn.hidden = factor !== 8;
+  }
+
+  factors.forEach(function (button) {
+    button.addEventListener("click", function () {
+      factors.forEach(function (other) {
+        other.setAttribute("aria-checked", String(other === button));
+      });
+      drawStrip(Number(button.dataset.f));
+    });
+  });
+  drawStrip(2);
+
+  /* --------------------------------------------------------- the numbers */
+
+  var numbers = document.getElementById("numbers");
+  var table = document.getElementById("table");
+  numbers.addEventListener("click", function () {
+    var open = table.hidden;
+    table.hidden = !open;
+    numbers.setAttribute("aria-expanded", String(open));
+    numbers.textContent = open ? "Hide numbers" : "Numbers";
+  });
+
+  /* ------------------------------------------------------------ the demo */
+
+  /* One second of 30 fps footage, slowed, running twice side by side. Both
+     panes show the same motion at the same speed; what differs is how often
+     either of them is given something new to show - every held frame on the
+     left, every written frame on the right. The dots are where the frames
+     land, so the density of them is the whole difference, standing still. */
+
+  var SOURCE = 30;              /* frames in the second going in */
+  var dSlow = 4;                /* 30 fps in, 120 out, played at a quarter speed */
+  var dCanvasA = document.getElementById("demo-a");
+  var dCanvasB = document.getElementById("demo-b");
+  var dCtxA = dCanvasA.getContext("2d");
+  var dCtxB = dCanvasB.getContext("2d");
+  var dShown = 0;               /* milliseconds of the slowed clip played */
+  var dLast = null;
+  var dPlaying = !still;
+  var dOn = true;               /* the section is on screen */
+
+  function dLoop() { return 1000 * dSlow; }
+
+  /* A figure of eight: it closes on itself, so the clip loops without a cut,
+     and it is quick through the middle, which is where a held frame shows. */
+  function dAt(ms, w, h) {
+    var u = ((ms % dLoop()) / dLoop()) * Math.PI * 2;
+    return { x: w / 2 + Math.sin(u) * (w * 0.33), y: h / 2 + Math.sin(u * 2) * (h * 0.31) };
+  }
+
+  function dPaint(ctx, canvas, count) {
+    var w = canvas.clientWidth;
+    var h = canvas.clientHeight;
+    if (!w || !h) return;
+    var gap = dLoop() / count;
+    var every = count / SOURCE;   /* 1 on the left; the factor on the right */
+
+    ctx.clearRect(0, 0, w, h);
+
+    /* the path itself, under everything */
+    ctx.beginPath();
+    for (var s = 0; s <= 240; s += 1) {
+      var p = dAt((s / 240) * dLoop(), w, h);
+      if (s === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = "rgba(243,243,243,0.06)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    /* where every frame of this version lands */
+    for (var i = 0; i < count; i += 1) {
+      var real = i % every === 0;
+      var d = dAt(i * gap, w, h);
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, real ? 2.6 : 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = real ? "rgba(243,243,243,0.72)" : "rgba(185,163,126,0.5)";
+      ctx.fill();
+    }
+
+    /* the frame being shown right now, held until the next one is due */
+    var head = dAt(Math.floor(dShown / gap) * gap, w, h);
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "#101010";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#f3f3f3";
+    ctx.fill();
+  }
+
+  function dSize() {
+    [dCanvasA, dCanvasB].forEach(function (canvas) {
+      var ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(canvas.clientWidth * ratio);
+      canvas.height = Math.round(canvas.clientHeight * ratio);
+      canvas.getContext("2d").setTransform(ratio, 0, 0, ratio, 0, 0);
+    });
+  }
+
+  function dTick(now) {
+    if (dLast === null) dLast = now;
+    var dt = Math.min(64, now - dLast);
+    dLast = now;
+    if (dOn) {
+      if (dPlaying) dShown += dt;
+      dPaint(dCtxA, dCanvasA, SOURCE);
+      dPaint(dCtxB, dCanvasB, SOURCE * dSlow);
+    }
+    requestAnimationFrame(dTick);
+  }
+
+  var dButton = document.getElementById("demo-play");
+  dButton.addEventListener("click", function () {
+    dPlaying = !dPlaying;
+    dButton.setAttribute("aria-pressed", String(dPlaying));
+    document.getElementById("demo-pause-icon").hidden = !dPlaying;
+    document.getElementById("demo-play-icon").hidden = dPlaying;
+    document.getElementById("demo-play-label").textContent = dPlaying ? "Pause" : "Play";
+  });
+  if (still) {
+    dButton.setAttribute("aria-pressed", "false");
+    document.getElementById("demo-pause-icon").hidden = true;
+    document.getElementById("demo-play-icon").hidden = false;
+    document.getElementById("demo-play-label").textContent = "Play";
+  }
+
+  window.addEventListener("resize", dSize);
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      dOn = entries[0].isIntersecting;
+    }).observe(dCanvasA);
+  }
+
+  dSize();
+  requestAnimationFrame(dTick);
+
+  /* ----------------------------------------------------------- the bench */
+
+  /* A working half of the window. A folder lands, the videos inside it line up
+     one row each, rows are dragged to reorder, and the sidebar is set either to
+     all of them or to whichever one has been clicked - so a single queue can
+     hold a 2x pass, a 4x on the GPU and an 8x slow motion at once. */
+
+  var AUDIO_NOTES = {
+    "keep-pitch": "Same pitch, but it echoes and warbles as it slows.",
+    "drop-pitch": "Deeper: an octave down at 2x, a rumble by 8x.",
+    mute: "No sound track at all."
+  };
+
+  var files = [
+    { name: "drone-beach-pass.mp4", mode: "fps", factor: 4, audio: "mute", device: "NVIDIA RTX 4070", running: true },
+    { name: "ceremony-02.mov", mode: "fps", factor: 2, audio: "mute", device: "Auto" },
+    { name: "skate-drop-in.mp4", mode: "slowmo", factor: 8, audio: "drop-pitch", device: "NVIDIA RTX 4070" },
+    { name: "interview-a.mkv", mode: "fps", factor: 2, audio: "mute", device: "CPU" }
+  ];
+  var shared = { mode: "fps", factor: 2, audio: "mute", device: "Auto" };
+  var chosen = null;
+
+  var bench = document.getElementById("bench");
+  var panel = document.getElementById("panel");
+  var falling = document.getElementById("falling");
+  var qrows = document.getElementById("qrows");
+  var rowEls = [];
+  var STEP = 46;   /* a row and the gap under it */
+
+  function autoTag(f) {
+    if (f.mode !== "slowmo") return f.factor + "x";
+    return f.factor === 2 ? "slowmo" : "slowmo" + f.factor + "x";
+  }
+
+  function scope() { return chosen || shared; }
+
+  function drawSide() {
+    var s = scope();
+    var slowmo = s.mode === "slowmo";
+
+    document.getElementById("q-all").setAttribute("aria-checked", String(!chosen));
+    var one = document.getElementById("q-one");
+    one.setAttribute("aria-checked", String(!!chosen));
+    one.setAttribute("aria-disabled", String(!chosen));
+    document.getElementById("q-one-name").textContent = chosen ? chosen.name : "Selected";
+
+    document.querySelectorAll("[data-qmode]").forEach(function (b) {
+      b.setAttribute("aria-checked", String(b.dataset.qmode === s.mode));
+    });
+    document.querySelectorAll("[data-qf]").forEach(function (b) {
+      b.setAttribute("aria-checked", String(Number(b.dataset.qf) === s.factor));
+    });
+    document.querySelectorAll("[data-qa]").forEach(function (b) {
+      b.setAttribute("aria-checked", String(b.dataset.qa === s.audio));
+    });
+
+    document.getElementById("q-note").textContent = slowmo
+      ? s.factor + "x longer"
+      : "30 fps becomes " + 30 * s.factor;
+
+    document.getElementById("q-audio-cap").hidden = !slowmo;
+    document.getElementById("q-audio").hidden = !slowmo;
+    var audioNote = document.getElementById("q-audio-note");
+    audioNote.hidden = !slowmo;
+    audioNote.textContent = AUDIO_NOTES[s.audio];
+
+    document.getElementById("q-suffix").textContent = autoTag(s);
+    document.getElementById("q-device").textContent = s.device;
+  }
+
+  function drawRows(stagger) {
+    qrows.textContent = "";
+    rowEls = [];
+    var place = 0;
+
+    files.forEach(function (f, i) {
+      var el = document.createElement("div");
+      el.className = "brow";
+      el.dataset.state = f.running ? "running" : "queued";
+      if (chosen === f) el.dataset.chosen = "true";
+
+      if (f.running) {
+        var fill = document.createElement("span");
+        fill.className = "brow__fill";
+        el.appendChild(fill);
+      }
+
+      var grip = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      grip.setAttribute("class", "brow__grip");
+      grip.setAttribute("viewBox", "0 0 10 16");
+      grip.setAttribute("aria-hidden", "true");
+      [[3, 4], [7, 4], [3, 8], [7, 8], [3, 12], [7, 12]].forEach(function (p) {
+        var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", p[0]);
+        dot.setAttribute("cy", p[1]);
+        dot.setAttribute("r", "1");
+        grip.appendChild(dot);
+      });
+      el.appendChild(grip);
+
+      var num = document.createElement("span");
+      num.className = "brow__place";
+      if (!f.running) { place += 1; num.textContent = String(place); }
+      el.appendChild(num);
+
+      var name = document.createElement("span");
+      name.className = "brow__name";
+      name.textContent = f.name;
+      el.appendChild(name);
+
+      var tag = document.createElement("span");
+      tag.className = "brow__tag";
+      tag.textContent = autoTag(f);
+      el.appendChild(tag);
+
+      el.addEventListener("pointerdown", function (e) { grab(e, i); });
+      qrows.appendChild(el);
+      rowEls.push(el);
+
+      if (stagger && !still) {
+        el.dataset.enter = "true";
+        (function (node, index) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              node.style.transitionDelay = (index * 70) + "ms";
+              node.dataset.enter = "false";
+            });
+          });
+        }(el, i));
+      }
+    });
+  }
+
+  function draw(stagger) { drawRows(stagger); drawSide(); }
+
+  /* One row lifted out of the list, and the rows it passes stepping aside a
+     place at a time. The file being worked on holds the top and cannot move. */
+  var heldAt = null;
+  var heldTo = null;
+  var heldFrom = 0;
+  var heldRow = null;
+  var dragged = false;
+
+  function grab(event, index) {
+    if (files[index].running || event.button > 0) return;
+    heldAt = index;
+    heldTo = index;
+    heldFrom = event.clientY;
+    heldRow = rowEls[index];
+    dragged = false;
+    heldRow.setPointerCapture(event.pointerId);
+    heldRow.addEventListener("pointermove", drag);
+    heldRow.addEventListener("pointerup", drop);
+    heldRow.addEventListener("pointercancel", drop);
+  }
+
+  function drag(event) {
+    if (heldAt === null) return;
+    var dy = event.clientY - heldFrom;
+    if (Math.abs(dy) > 4 && !dragged) { dragged = true; heldRow.dataset.held = "true"; }
+    if (!dragged) return;
+
+    heldRow.style.transform = "translateY(" + dy + "px)";
+    var lowest = files[0].running ? 1 : 0;
+    var want = Math.max(lowest, Math.min(files.length - 1, heldAt + Math.round(dy / STEP)));
+    if (want === heldTo) return;
+
+    heldTo = want;
+    rowEls.forEach(function (el, j) {
+      if (j === heldAt) return;
+      var shift = 0;
+      if (heldAt < heldTo && j > heldAt && j <= heldTo) shift = -STEP;
+      if (heldAt > heldTo && j < heldAt && j >= heldTo) shift = STEP;
+      el.style.transform = shift ? "translateY(" + shift + "px)" : "";
+    });
+  }
+
+  function drop() {
+    if (heldAt === null) return;
+    heldRow.removeEventListener("pointermove", drag);
+    heldRow.removeEventListener("pointerup", drop);
+    heldRow.removeEventListener("pointercancel", drop);
+
+    if (!dragged) {
+      /* a click, not a drag: the sidebar takes this file, or goes back to all */
+      var file = files[heldAt];
+      chosen = chosen === file ? null : file;
+    } else {
+      files.splice(heldTo, 0, files.splice(heldAt, 1)[0]);
+    }
+    heldAt = null;
+    heldRow = null;
+    draw(false);
+  }
+
+  /* What the sidebar changes, it changes for whoever it is set to: one file, or
+     every file still waiting. The one being worked on keeps what it started with. */
+  function set(key, value) {
+    if (chosen) chosen[key] = value;
+    else {
+      shared[key] = value;
+      files.forEach(function (f) { if (!f.running) f[key] = value; });
+    }
+    draw(false);
+  }
+
+  document.querySelectorAll("[data-qmode]").forEach(function (b) {
+    b.addEventListener("click", function () { set("mode", b.dataset.qmode); });
+  });
+  document.querySelectorAll("[data-qf]").forEach(function (b) {
+    b.addEventListener("click", function () { set("factor", Number(b.dataset.qf)); });
+  });
+  document.querySelectorAll("[data-qa]").forEach(function (b) {
+    b.addEventListener("click", function () { set("audio", b.dataset.qa); });
+  });
+  document.getElementById("q-all").addEventListener("click", function () {
+    chosen = null;
+    draw(false);
+  });
+
+  /* The panel is empty until the section is reached, and then a folder lands
+     in it and the videos inside come out one row at a time. */
+  function land() {
+    if (still) { bench.dataset.empty = "false"; draw(false); return; }
+    falling.dataset.in = "true";
+    panel.dataset.catching = "true";
+    window.setTimeout(function () {
+      falling.dataset.out = "true";
+      panel.dataset.catching = "false";
+      bench.dataset.empty = "false";
+      draw(true);
+    }, 760);
+  }
+
+  drawSide();
+  if (still || !("IntersectionObserver" in window)) {
+    land();
+  } else {
+    var watch = new IntersectionObserver(function (entries) {
+      if (!entries[0].isIntersecting) return;
+      watch.disconnect();
+      land();
+    }, { rootMargin: "0px 0px -18% 0px" });
+    watch.observe(bench);
+  }
+
+  /* ------------------------------------------------------------ the dots */
+
+  /* The panel background out of the app, kept whole: dots wander until
+     something asks them to line up, hold the grid they made while a wave runs
+     through it, then come apart again. The background doing what the tool
+     does, turning something loose into something even. */
+
+  var canvas = document.getElementById("dots");
+  var ctx = canvas.getContext("2d");
+
+  var PITCH = 34;      // roughly the spacing of the formed grid
+  var MARGIN = 26;     // keeps the outer rows off the edges
+  var SLOWEST = 60;    // pixels a second, adrift
+  var FASTEST = 155;
+  var TURN = 4;        // radians a second of aimless steering
+  var SETTLE = 700;    // milliseconds one dot takes to reach its slot
+  var STAGGER = 460;   // milliseconds between the first slot filling and the last
+  var SWELL = 620;     // milliseconds the wave takes to rise
+  var WAVE = 180;      // pixels from one crest to the next
+  var PERIOD = 2800;   // milliseconds a crest takes to travel one wavelength
+  var CREST = 6;       // pixels a dot rides either side of its slot
+
+  /* Out fast, in slow, and a little past the slot before it comes to rest. */
+  function ease(t) { return 1 + 1.7 * Math.pow(t - 1, 3) + 0.7 * Math.pow(t - 1, 2); }
+  function between(low, high) { return low + Math.random() * (high - low); }
+
+  var dots = [];
+  var slots = [];
+  var formed = false;
+  var swell = 0;
+  var held = 0;        // milliseconds the grid has been standing
+  var clock = 0;
+  var last = null;
+  var origin = null;   // where the pointer asked, in canvas coordinates
+  var hover = false;
+  var width = 0;
+  var height = 0;
+  var visible = true;
+
+  function spawn() {
+    var angle = between(0, Math.PI * 2);
+    var pace = between(SLOWEST, FASTEST);
+    return {
+      x: between(0, width), y: between(0, height),
+      vx: Math.cos(angle) * pace, vy: Math.sin(angle) * pace,
+      fx: 0, fy: 0, slot: 0, settled: 0, delay: 0, reach: 0,
+      spark: Math.random(), gold: Math.random() < 0.055
+    };
+  }
+
+  function rebuild() {
+    var across = Math.max(width - MARGIN * 2, 0);
+    var down = Math.max(height - MARGIN * 2, 0);
+    var cols = Math.max(2, Math.round(across / PITCH) + 1);
+    var rows = Math.max(2, Math.round(down / PITCH) + 1);
+
+    slots = [];
+    for (var row = 0; row < rows; row += 1) {
+      for (var col = 0; col < cols; col += 1) {
+        slots.push({
+          x: MARGIN + (across * col) / (cols - 1),
+          y: MARGIN + (down * row) / (rows - 1)
+        });
+      }
+    }
+    while (dots.length > slots.length) dots.pop();
+    while (dots.length < slots.length) dots.push(spawn());
+    if (formed) assign();
+  }
+
+  /* Every slot takes the nearest dot still going spare, so the grid comes
+     together out of short moves rather than a mass crossing of the panel. */
+  function assign() {
+    var taken = new Array(dots.length);
+    var ox = origin ? origin.x : width / 2;
+    var oy = origin ? origin.y : height / 2;
+    var far = 1;
+
+    for (var s = 0; s < slots.length; s += 1) {
+      var slot = slots[s];
+      var best = 0;
+      var least = Infinity;
+      for (var d = 0; d < dots.length; d += 1) {
+        if (taken[d]) continue;
+        var gap = (dots[d].x - slot.x) * (dots[d].x - slot.x)
+                + (dots[d].y - slot.y) * (dots[d].y - slot.y);
+        if (gap < least) { least = gap; best = d; }
+      }
+      taken[best] = true;
+      var dot = dots[best];
+      dot.slot = s;
+      dot.fx = dot.x;
+      dot.fy = dot.y;
+      dot.settled = 0;
+      dot.reach = Math.sqrt((slot.x - ox) * (slot.x - ox) + (slot.y - oy) * (slot.y - oy));
+      if (dot.reach > far) far = dot.reach;
+    }
+    for (var i = 0; i < dots.length; i += 1) {
+      dots[i].delay = STAGGER * (dots[i].reach / far);
+    }
+  }
+
+  function loosen() {
+    for (var i = 0; i < dots.length; i += 1) {
+      var angle = between(0, Math.PI * 2);
+      var pace = between(SLOWEST, FASTEST);
+      dots[i].vx = Math.cos(angle) * pace;
+      dots[i].vy = Math.sin(angle) * pace;
+    }
+  }
+
+  function step(dt) {
+    clock += dt;
+
+    if (hover && !formed) { formed = true; held = 0; assign(); }
+    if (!hover && formed) { formed = false; swell = 0; loosen(); }
+
+    if (formed) {
+      held += dt;
+      swell = Math.min(1, swell + dt / SWELL);
+    } else {
+      swell = Math.max(0, swell - dt / SWELL);
+    }
+
+    for (var i = 0; i < dots.length; i += 1) {
+      var dot = dots[i];
+
+      if (formed) {
+        dot.settled += dt;
+        var t = Math.max(0, Math.min(1, (dot.settled - dot.delay) / SETTLE));
+        var k = ease(t);
+        var slot = slots[dot.slot];
+        dot.x = dot.fx + (slot.x - dot.fx) * k;
+        dot.y = dot.fy + (slot.y - dot.fy) * k;
+        if (swell > 0) {
+          var ride = Math.sin((slot.x / WAVE - clock / PERIOD) * Math.PI * 2);
+          dot.y += ride * CREST * swell * t;
+        }
+        continue;
+      }
+
+      var turn = (Math.random() - 0.5) * TURN * (dt / 1000);
+      var cos = Math.cos(turn);
+      var sin = Math.sin(turn);
+      var vx = dot.vx * cos - dot.vy * sin;
+      var vy = dot.vx * sin + dot.vy * cos;
+      dot.vx = vx;
+      dot.vy = vy;
+      dot.x += vx * (dt / 1000);
+      dot.y += vy * (dt / 1000);
+
+      if (dot.x < -4) dot.x = width + 4;
+      if (dot.x > width + 4) dot.x = -4;
+      if (dot.y < -4) dot.y = height + 4;
+      if (dot.y > height + 4) dot.y = -4;
+    }
+  }
+
+  function paint() {
+    ctx.clearRect(0, 0, width, height);
+    for (var i = 0; i < dots.length; i += 1) {
+      var dot = dots[i];
+      var alpha = 0.14 + dot.spark * 0.36;
+      ctx.fillStyle = dot.gold
+        ? "rgba(185,163,126," + (alpha + 0.16).toFixed(3) + ")"
+        : "rgba(243,243,243," + alpha.toFixed(3) + ")";
+      ctx.fillRect(dot.x - 0.75, dot.y - 0.75, 1.6, 1.6);
+    }
+  }
+
+  function frame(now) {
+    if (last === null) last = now;
+    var dt = Math.min(48, now - last);
+    last = now;
+    if (visible) { step(dt); paint(); }
+    else { last = now; }
+    requestAnimationFrame(frame);
+  }
+
+  function size() {
+    var box = canvas.getBoundingClientRect();
+    var ratio = Math.min(window.devicePixelRatio || 1, 2);
+    width = Math.round(box.width);
+    height = Math.round(box.height);
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    rebuild();
+  }
+
+  var hero = canvas.parentElement;
+
+  /* Only the download button asks. The grid gathers out from under it, and
+     comes apart the moment the pointer leaves. */
+  var asks = document.querySelectorAll(".pill");
+  for (var a = 0; a < asks.length; a += 1) {
+    asks[a].addEventListener("pointerenter", function (event) {
+      var box = canvas.getBoundingClientRect();
+      var at = event.currentTarget.getBoundingClientRect();
+      origin = {
+        x: at.left + at.width / 2 - box.left,
+        y: at.top + at.height / 2 - box.top
+      };
+      hover = true;
+    });
+    asks[a].addEventListener("pointerleave", function () { hover = false; });
+  }
+
+  window.addEventListener("resize", size);
+
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+    }).observe(hero);
+  }
+
+  size();
+
+  if (still) {
+    /* No motion asked for: the grid, already formed, and nothing moving. */
+    formed = true;
+    assign();
+    for (var i = 0; i < dots.length; i += 1) {
+      dots[i].x = slots[dots[i].slot].x;
+      dots[i].y = slots[dots[i].slot].y;
+    }
+    paint();
+  } else {
+    requestAnimationFrame(frame);
+  }
+}());
+</script>
+
+</body>
+</html>
