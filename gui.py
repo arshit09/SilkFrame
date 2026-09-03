@@ -61,6 +61,17 @@ def web_root():
     return Path(packaged if packaged else Path(__file__).resolve().parent) / "web"
 
 
+def icon_file():
+    """The app icon, in the same two places the front end is.
+
+    Handed to pywebview because the window it makes otherwise takes its icon
+    from whatever started it - and the installed build is started by a python
+    of its own, so the taskbar showed the python icon.
+    """
+    packaged = getattr(sys, "_MEIPASS", None)
+    return Path(packaged if packaged else Path(__file__).resolve().parent) / "icon.ico"
+
+
 def auto_tag(mode, factor):
     """The name part a file takes when no suffix was typed for it."""
     if mode == "slowmo":
@@ -559,7 +570,7 @@ def main():
         frameless=True, easy_drag=False,
     )
     app.attach(window)
-    webview.start()
+    webview.start(icon=str(icon_file()))
 
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ def build_installer():
     """
     started = time.monotonic()
     payload = []
-    for name in ("gui.py", "silkframe.py", "video.py", "version.py"):
+    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico"):
         payload += ["--add-data", f"{ROOT / name};."]
     for name in ("rife", "web"):
         payload += ["--add-data", f"{ROOT / name};{name}"]
@@ -138,6 +138,7 @@ def main():
         "--add-binary", f"{ffprobe};ffmpeg",
         "--add-data", f"{weights};weights",
         "--add-data", f"{ROOT / 'web'};web",
+        "--add-data", f"{ICON};.",
         str(ROOT / "gui.py"),
     ], check=True, cwd=ROOT)
 

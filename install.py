@@ -212,7 +212,7 @@ def install_app(report):
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     source = bundled()
-    for name in ("gui.py", "silkframe.py", "video.py", "version.py"):
+    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico"):
         shutil.copy2(source / name, root / name)
     for name in ("rife", "web"):
         shutil.copytree(source / name, root / name)
