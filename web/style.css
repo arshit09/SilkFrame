@@ -433,9 +433,15 @@ button { background: none; border: none; cursor: pointer; }
 
 /* ---------------------------------------------------------------- log pane */
 
+/* Boxed, and set in from the edges the way the drop panel above it is, so the
+   log reads as a panel of its own rather than as more of the window. */
 .pane {
   flex: none;
   height: var(--log-height);
+  margin: 0 var(--spacing-16) var(--spacing-16);
+  border: 1px solid var(--color-graphite);
+  border-radius: var(--radius-cards);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -446,14 +452,14 @@ button { background: none; border: none; cursor: pointer; }
   height: 32px;
   display: flex;
   align-items: center;
-  padding: 0 var(--spacing-16);
+  padding: 0 var(--spacing-12);
 }
 
 .log {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 var(--spacing-16) var(--spacing-12);
+  padding: 0 var(--spacing-12) var(--spacing-12);
   font-family: var(--font-input);
   font-size: 13px;
   line-height: 1.54;
@@ -469,8 +475,8 @@ button { background: none; border: none; cursor: pointer; }
 
 /* ----------------------------------------------------------------- sidebar */
 
-/* Every control here is a filled surface rather than an outlined box, which
-   leaves the divider below as the only rule drawn anywhere in the window. */
+/* Every control here is a filled surface rather than an outlined box, so the
+   divider below is the only rule the column itself draws. */
 
 .side {
   flex: none;
@@ -744,13 +750,16 @@ button:focus-visible, .name:focus-within {
 .statusbar .ghost { min-width: 96px; justify-content: center; }
 
 /* The progress bar is the top edge of the status bar, so it never takes a row
-   of its own and never moves anything when it appears. */
+   of its own and never moves anything when it appears. The rule along its
+   underside is drawn whether or not the bar is filling, and holds the bar
+   apart from the status and the buttons below it. */
 .statusbar__track {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
+  border-bottom: 1px solid var(--color-graphite);
 }
 
 .statusbar__fill {
