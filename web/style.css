@@ -271,6 +271,50 @@ button { background: none; border: none; cursor: pointer; }
 
 .drop__link:hover { color: var(--color-chalk); }
 
+/* ----------------------------------------------------------------- opening */
+
+/* The window opens on the panel's own canvas laid over everything under the
+   toolbar, in the panel's colour, the grid already standing on it and the
+   wave running through. Once the page has its settings app.js narrows the
+   clip to the panel, and the canvas goes back inside it. */
+[data-boot] .drop__dots {
+  position: fixed;
+  top: var(--toolbar-height);
+  left: 0;
+  height: calc(100% - var(--toolbar-height));
+  z-index: 1;
+  background: var(--color-carbon);
+  clip-path: inset(0 round 0);
+  transition: clip-path 700ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.boot { display: none; }
+
+[data-boot] .boot {
+  position: fixed;
+  top: var(--toolbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-12);
+  pointer-events: none;
+  transition: opacity 200ms linear;
+}
+
+[data-boot="closing"] .boot { opacity: 0; }
+
+.boot .boot__mark { width: 40px; height: 40px; }   /* over .icon's size, which comes later */
+
+/* What the cover was standing in for comes up as it lands, rather than being
+   there the instant the cover is not. */
+[data-boot] .drop__body { opacity: 0; }
+.drop__body { transition: opacity 300ms linear; }
+
 /* ------------------------------------------------------------------- queue */
 
 /* One row per file, in the order they will run. A row is dragged by anywhere

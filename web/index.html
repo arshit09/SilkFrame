@@ -5,7 +5,7 @@
 <title>SilkFrame</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-boot="cover">
 <div class="app">
 
   <header class="toolbar pywebview-drag-region" id="toolbar">
@@ -180,6 +180,17 @@
     <button class="ghost" id="stop" type="button" hidden>Stop</button>
     <button class="pill" id="close" type="button" hidden>Close</button>
   </footer>
+
+  <!-- What the window opens on, over the panel's dots while they cover
+       everything under the toolbar: see shrink() in app.js. -->
+  <div class="boot" role="status">
+    <svg class="icon mark boot__mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M4 10.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
+      <path class="mark__gold" d="M4 16c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
+      <path d="M4 21.5c3.3-1.87 4.7-1.87 8 0 3.3 1.87 4.7 1.87 8 0 3.3-1.87 4.7-1.87 8 0"></path>
+    </svg>
+    <p class="caption">Starting</p>
+  </div>
 
   <!-- The window has no border of its own, so these eight strips are the
        resize handles: invisible, on top of everything, one per edge and

@@ -815,6 +815,7 @@ window.addEventListener("pywebviewready", async () => {
   change({ mode: boot.mode, factor: boot.factor,
            device: boot.device, suffix: boot.suffix, audio: boot.audio });
   write(boot.greeting);
+  ready = true;   // which lets the opening cover go: see shrink()
 });
 
 // ------------------------------------------------------------ dot-map canvas
@@ -838,6 +839,7 @@ const WAVE = 150;      // pixels from one crest of it to the next
 const PERIOD = 2400;   // milliseconds a crest takes to travel one wavelength
 const CREST = 5;       // pixels a dot rides either side of its slot
 const LOOSEN = 420;    // milliseconds the grid takes to come apart into drift
+const HOLD = 700;      // milliseconds the opening grid is on screen before it closes in
 
 // Out fast, in slow, and a little past the slot before it comes to rest.
 const ease = (t) => 1 + 1.7 * (t - 1) ** 3 + 0.7 * (t - 1) ** 2;
@@ -854,6 +856,11 @@ let clock = 0;
 let last = null;
 let width = 0;
 let height = 0;
+// The window opens with this canvas laid over everything under the toolbar
+// and the grid standing on it, wave and all; see shrink() and land() for how
+// it comes back to being the panel's.
+let opening = "cover";   // then "closing", then "landed" for a frame, then null
+let ready = false;       // the page has had its settings from Python
 
 function spawn() {
   const angle = random(0, Math.PI * 2);
@@ -867,19 +874,33 @@ function spawn() {
 
 // The grid is rebuilt whenever the panel changes size: even spacing across
 // whatever is left inside the margin, and one dot for each slot, no more.
+// While the window is opening the canvas covers more than the panel, and the
+// panel's grid is carried on past its edges at the same spacing to fill the
+// rest - so that once the cover has closed in, the dots left over the panel
+// are the panel's own grid, one for one.
 function rebuild() {
-  const across = Math.max(width - MARGIN * 2, 0);
-  const down = Math.max(height - MARGIN * 2, 0);
+  const frame = opening ? panelFrame() : { x: 0, y: 0, width, height };
+  const across = Math.max(frame.width - MARGIN * 2, 0);
+  const down = Math.max(frame.height - MARGIN * 2, 0);
   const cols = Math.max(2, Math.round(across / PITCH) + 1);
   const rows = Math.max(2, Math.round(down / PITCH) + 1);
+  const left = frame.x + MARGIN;
+  const top = frame.y + MARGIN;
+  const stepX = Math.max(across / (cols - 1), 1);
+  const stepY = Math.max(down / (rows - 1), 1);
+  const [firstCol, lastCol] = opening
+    ? [-Math.floor(left / stepX), Math.floor((width - left) / stepX)] : [0, cols - 1];
+  const [firstRow, lastRow] = opening
+    ? [-Math.floor(top / stepY), Math.floor((height - top) / stepY)] : [0, rows - 1];
 
   slots = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
+  for (let row = firstRow; row <= lastRow; row += 1) {
+    for (let col = firstCol; col <= lastCol; col += 1) {
       slots.push({
-        x: MARGIN + (across * col) / (cols - 1),
-        y: MARGIN + (down * row) / (rows - 1),
+        x: left + (across * col) / (cols - 1),
+        y: top + (down * row) / (rows - 1),
         delay: 0,   // set when the grid forms: it depends where the file came in
+        inside: col >= 0 && col < cols && row >= 0 && row < rows,   // over the panel
       });
     }
   }
@@ -964,11 +985,55 @@ function drift(dot, secs) {
   }
 }
 
+// Where the panel sits on the canvas while the canvas is covering the window,
+// and the size the canvas will be once it is back inside the panel.
+function panelFrame() {
+  const cover = canvas.getBoundingClientRect();
+  const panel = ui.drop.getBoundingClientRect();
+  return { x: panel.left - cover.left, y: panel.top - cover.top,
+           width: ui.drop.clientWidth, height: ui.drop.clientHeight };
+}
+
+// The cover closes in on the panel by its clip, so the grid on it is cut down
+// to the part over the panel rather than squeezed into it, and the rest of the
+// window is uncovered as the edges pass.
+function shrink() {
+  const frame = panelFrame();
+  const right = width - frame.x - frame.width;
+  const bottom = height - frame.y - frame.height;
+  opening = "closing";
+  document.body.dataset.boot = "closing";
+  canvas.addEventListener("transitionend", () => { opening = "landed"; }, { once: true });
+  canvas.style.clipPath = `inset(${frame.y}px ${right}px ${bottom}px ${frame.x}px ` +
+                          `round ${getComputedStyle(ui.drop).borderRadius})`;
+}
+
+// The cover is down to the panel. The canvas goes back inside it with the dots
+// that are over it, each kept where it is on screen, and those let go of the
+// grid into drift. Called from paint() rather than from the transitionend, so
+// the canvas moving and the dots redrawn to match go out in the same frame.
+function land() {
+  const frame = panelFrame();
+  dots = dots.filter((dot) => slots[dot.slot].inside);
+  dots.forEach((dot) => { dot.x -= frame.x; dot.y -= frame.y; });
+  delete document.body.dataset.boot;
+  canvas.style.clipPath = "";
+  opening = null;
+  formed = false;
+  scatter();
+}
+
 function paint(now) {
-  const step = last === null ? 0 : Math.min(now - last, 100);
+  const first = last === null;
+  const step = first ? 0 : Math.min(now - last, 100);
   last = now;
   clock += step;
   since += step;
+
+  // Timed off the frames drawn rather than the clock on the wall, so the grid
+  // gets its time on screen even if the page was ready before it was shown.
+  if (opening === "cover" && ready && clock >= HOLD) shrink();
+  if (opening === "landed") land();
 
   if (canvas.clientWidth !== width || canvas.clientHeight !== height) {
     width = canvas.clientWidth;
@@ -983,7 +1048,7 @@ function paint(now) {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const wanted = state.busy || ui.drop.dataset.dragging === "true";
+  const wanted = opening !== null || state.busy || ui.drop.dataset.dragging === "true";
   calm = wanted ? 0 : calm + step;
   // Between the file landing and Python answering that it is busy there is a
   // frame or two where nothing is asking for the grid; holding the release
@@ -995,11 +1060,17 @@ function paint(now) {
     formed = false;
     scatter();
   }
+  // The window opens on the grid already standing with the wave through it,
+  // not on the dots coming together.
+  if (first) {
+    since = STAGGER + SETTLE;
+    swell = 1;
+  }
 
   // A file held over the panel gets the grid standing still; a job actually
   // running gets a wave crossing it. The wave falls away faster than it rises,
   // so there is next to none of it left by the time the grid breaks up.
-  const swelling = formed && state.busy;
+  const swelling = formed && (opening !== null || state.busy);
   swell += ((swelling ? 1 : 0) - swell) * (1 - Math.exp(-step / (swelling ? SWELL : SWELL / 3)));
 
   const secs = step / 1000;
