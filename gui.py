@@ -272,6 +272,7 @@ class App:
         """Only Python can see the real path of a dropped file, so the drop
         listener lives here rather than in app.js."""
         self.loaded.set()  # released first: losing the drop must not mute the page
+        self.window.show()
         self.frame = Frame(self.window)
         target = self.window.dom.get_element("#drop")
         if target:
@@ -568,6 +569,10 @@ def main():
         # The page draws the title bar; easy_drag would otherwise make every
         # square inch of it a drag handle, not just .pywebview-drag-region.
         frameless=True, easy_drag=False,
+        # Shown by on_loaded once the page is in it, so the window opens on
+        # the page rather than on an empty frame - and the launcher's splash,
+        # which stays up until this window is visible, hands straight over.
+        hidden=True,
     )
     app.attach(window)
     webview.start(icon=str(icon_file()))

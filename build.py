@@ -78,7 +78,9 @@ def build_installer():
     """
     started = time.monotonic()
     payload = []
-    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico"):
+    # install.py goes in as a file too, beside being the script: install_app
+    # copies it out, and the shortcuts launch the app by running that copy.
+    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico", "install.py"):
         payload += ["--add-data", f"{ROOT / name};."]
     for name in ("rife", "web"):
         payload += ["--add-data", f"{ROOT / name};{name}"]

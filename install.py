@@ -14,19 +14,21 @@ install by deleting it: see register(), add_shortcuts() and Uninstaller.
 
 import ctypes
 import json
+import math
 import os
 import queue
+import random
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
-import tkinter as tk
+import time
 import urllib.request
 import winreg
 import zipfile
+from ctypes import wintypes
 from pathlib import Path
-from tkinter import ttk
 
 from version import __version__
 
@@ -212,7 +214,7 @@ def install_app(report):
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir(parents=True)
     source = bundled()
-    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico"):
+    for name in ("gui.py", "silkframe.py", "video.py", "version.py", "icon.ico", "install.py"):
         shutil.copy2(source / name, root / name)
     for name in ("rife", "web"):
         shutil.copytree(source / name, root / name)
@@ -345,7 +347,7 @@ def shortcuts():
 
 
 def write_shortcut(path):
-    """One .lnk at path, pointing at the launcher under HOME.
+    """One .lnk at path, launching the app the way add_shortcuts says.
 
     Not WScript.Shell, which would be a line of powershell and is the obvious
     way to do this: it puts every path it is handed through the system ANSI
@@ -360,10 +362,14 @@ def write_shortcut(path):
                                          guid(IID_SHELL_LINK_W), ctypes.byref(link))
     try:
         # The slots taken out of IShellLinkW: SetDescription is the eighth entry
-        # of its vtable, SetWorkingDirectory the tenth and SetPath the twenty first.
-        for slot, value in ((20, str(LAUNCHER)), (9, str(HOME)),
+        # of its vtable, SetWorkingDirectory the tenth, SetArguments the twelfth,
+        # SetIconLocation the eighteenth and SetPath the twenty first.
+        for slot, value in ((20, str(interpreter(windowed=True))),
+                            (11, f'-s "{HOME / "app" / "install.py"}"'), (9, str(HOME)),
                             (7, "Smooth or slow down video by synthesising new frames")):
             method(link, slot, ctypes.c_wchar_p)(link, value)
+        # The app's own icon, not the python one the target would lend it.
+        method(link, 17, ctypes.c_wchar_p, ctypes.c_int)(link, str(HOME / "app" / "icon.ico"), 0)
         method(link, 0, ctypes.c_void_p, ctypes.c_void_p)(  # QueryInterface
             link, guid(IID_PERSIST_FILE), ctypes.byref(persist))
         method(persist, 6, ctypes.c_wchar_p, ctypes.c_int)(persist, str(path), True)  # Save
@@ -376,13 +382,22 @@ def write_shortcut(path):
 def add_shortcuts():
     """Put SilkFrame on the desktop and in the Start menu.
 
-    They point at a copy of this exe rather than at pythonw.exe directly: the
-    setup exe was run from wherever it was downloaded to and will not be there
-    for long, and going through it is also what gets a launch the environment
-    child_env() sets up. Running it with no arguments is a launch - see main().
+    They run the copy of this file that install_app put under HOME, on
+    SilkFrame's own pythonw, with no arguments - which is a launch, see main():
+    the splash, then the app under the environment child_env() sets up. -s
+    keeps a python installed on the machine from lending this one its per-user
+    site-packages, as child_env() does for everything started from here.
+
+    Not this exe, which they used to point at: being one file, it unpacks
+    itself into %TEMP% every time it is run - a thousand files, a second and
+    a half or more before anything at all is on screen.
+
+    The exe is still copied to LAUNCHER, though. Taskbar pins made from the
+    old shortcuts point there, and a copy left from an older release would
+    take this one's files for an upgrade and install its own over them.
     """
     if not getattr(sys, "frozen", False):
-        return  # a source checkout has no exe for the shortcuts to point at
+        return  # a source checkout has no exe to copy, nor anything installed to point at
     try:
         if Path(sys.executable).resolve() != LAUNCHER.resolve():
             shutil.copy2(sys.executable, LAUNCHER)  # unless this already is that copy, being run
@@ -419,8 +434,8 @@ def relaunch_from_temp():
 
 
 def launch():
-    subprocess.Popen([str(interpreter(windowed=True)), str(HOME / "app" / "gui.py")],
-                     cwd=HOME / "app", env=child_env(), creationflags=NO_WINDOW)
+    return subprocess.Popen([str(interpreter(windowed=True)), str(HOME / "app" / "gui.py")],
+                            cwd=HOME / "app", env=child_env(), creationflags=NO_WINDOW)
 
 
 def has_nvidia():
@@ -429,11 +444,261 @@ def has_nvidia():
                 Path(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe").exists())
 
 
+WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+
+def window_shown(pid):
+    """Whether the process has a window on screen."""
+    user32 = ctypes.windll.user32
+    owner = ctypes.c_ulong()
+    found = []
+
+    def check(hwnd, _):
+        user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+            found.append(hwnd)
+        return not found  # stop at the first
+
+    user32.EnumWindows(WNDENUMPROC(check), None)
+    return bool(found)
+
+
+# The colours of web/style.css, for the one screen the launcher draws itself.
+CARBON = "#080808"
+GRAPHITE = "#212121"
+CHALK = "#f3f3f3"
+SMOKE = "#9c9c9c"
+GOLD = "#b9a37e"   # the mark's middle band
+
+
+def argb(opacity, colour):
+    """One of the colours above as GDI+ takes it, at an opacity from 0 to 1."""
+    return ctypes.c_uint32(round(opacity * 255) << 24 | int(colour[1:], 16))
+
+
+def floats(*values):
+    return (ctypes.c_float * len(values))(*values)
+
+
+class BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+                ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+                ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                ("biClrImportant", wintypes.DWORD)]
+
+
+class BLENDFUNCTION(ctypes.Structure):
+    _fields_ = [("BlendOp", ctypes.c_ubyte), ("BlendFlags", ctypes.c_ubyte),
+                ("SourceConstantAlpha", ctypes.c_ubyte), ("AlphaFormat", ctypes.c_ubyte)]
+
+
+class GdiplusStartupInput(ctypes.Structure):
+    _fields_ = [("GdiplusVersion", ctypes.c_uint32), ("DebugEventCallback", ctypes.c_void_p),
+                ("SuppressBackgroundThread", ctypes.c_int),
+                ("SuppressExternalCodecs", ctypes.c_int)]
+
+
+class Splash:
+    """What a launch shows while the app's own window comes up.
+
+    That takes a couple of seconds - python, .NET and WebView2 all start before
+    the window can draw anything - and with nothing on screen meanwhile there
+    is no sign the double-click landed. The launcher is up well before that, so
+    it draws the mark here, its bands flowing over a field of dots riding the
+    wave the app's panel shows, and steps aside once the app's window is on
+    screen. gui.py holds that window back until its page is in it, so the one
+    hands straight over to the other.
+
+    Drawn with GDI+ into a layered window rather than on a tkinter canvas,
+    which has no anti-aliasing: its curves came out stepped and its dots
+    square. The window is a plain STATIC one, which needs no window procedure
+    of its own, because UpdateLayeredWindow is what puts each frame up.
+    """
+
+    WIDTH, HEIGHT = 320, 200   # pixels at 100% display scaling
+    RADIUS = 10      # of the corners
+    PITCH = 16       # pixels between the dots
+    WAVE = 150       # pixels from one crest to the next, as on the page
+    PERIOD = 2.4     # seconds a crest takes to travel one wavelength, as on the page
+    CREST = 3        # pixels a dot rides either side of its place
+    MARK = 2.5       # the mark is drawn on a 32 unit grid; this makes it 80 pixels
+    FLOW = 1.6       # seconds the mark's bands take to flow one wavelength
+    FRAME = 1 / 60   # seconds between frames
+    SETTLED = 0.15   # seconds the app's window has to stay up to count as shown
+    FADE = 0.15      # seconds it takes to go once it has
+    PATIENCE = 60    # seconds after which it goes whether the window is up or not
+
+    def __init__(self, app):
+        self.app = app
+        user32, gdi32, gdiplus = ctypes.windll.user32, ctypes.windll.gdi32, ctypes.windll.gdiplus
+        try:  # drawn for the screen's own pixels, not stretched up to them
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-2))  # system aware
+            self.scale = user32.GetDpiForSystem() / 96
+        except AttributeError:  # Windows 10 before 1607
+            self.scale = 1
+        width, height = round(self.WIDTH * self.scale), round(self.HEIGHT * self.scale)
+        self.size = wintypes.SIZE(width, height)
+
+        user32.CreateWindowExW.restype = ctypes.c_void_p
+        self.window = ctypes.c_void_p(user32.CreateWindowExW(
+            0x80088,  # layered, kept off the taskbar, and above the app's window
+            "STATIC", "SilkFrame", 0x80000000,  # a popup: no frame of its own
+            (user32.GetSystemMetrics(0) - width) // 2, (user32.GetSystemMetrics(1) - height) // 2,
+            width, height, None, None, None, None))
+
+        # A top-down 32 bit DIB for the window to be updated from, and GDI+
+        # drawing straight into its pixels as premultiplied ARGB, which is the
+        # form UpdateLayeredWindow wants them in.
+        gdi32.CreateCompatibleDC.restype = ctypes.c_void_p
+        gdi32.CreateDIBSection.restype = ctypes.c_void_p
+        self.dc = ctypes.c_void_p(gdi32.CreateCompatibleDC(None))
+        header = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), width, -height, 1, 32)
+        pixels = ctypes.c_void_p()
+        gdi32.SelectObject(self.dc, ctypes.c_void_p(gdi32.CreateDIBSection(
+            self.dc, ctypes.byref(header), 0, ctypes.byref(pixels), None, 0)))
+        gdiplus.GdiplusStartup(ctypes.byref(ctypes.c_size_t()),
+                               ctypes.byref(GdiplusStartupInput(1)), None)
+        bitmap = ctypes.c_void_p()
+        gdiplus.GdipCreateBitmapFromScan0(width, height, width * 4, 0xE200B,  # 32bpp PARGB
+                                          pixels, ctypes.byref(bitmap))
+        self.graphics = ctypes.c_void_p()
+        gdiplus.GdipGetImageGraphicsContext(bitmap, ctypes.byref(self.graphics))
+        gdiplus.GdipSetSmoothingMode(self.graphics, 4)      # anti-aliased
+        gdiplus.GdipSetPixelOffsetMode(self.graphics, 2)    # high quality
+        gdiplus.GdipSetTextRenderingHint(self.graphics, 3)  # anti-aliased, fitted to the grid
+
+        self.brush = ctypes.c_void_p()
+        gdiplus.GdipCreateSolidFill(argb(1, CARBON), ctypes.byref(self.brush))
+        self.edge = ctypes.c_void_p()
+        gdiplus.GdipCreatePen1(argb(1, GRAPHITE), ctypes.c_float(self.scale), 0,
+                               ctypes.byref(self.edge))
+        self.band = ctypes.c_void_p()
+        gdiplus.GdipCreatePen1(argb(1, CHALK), ctypes.c_float(3 * self.MARK * self.scale), 0,
+                               ctypes.byref(self.band))
+        gdiplus.GdipSetPenStartCap(self.band, 2)  # round, as the icon's are
+        gdiplus.GdipSetPenEndCap(self.band, 2)
+        gdiplus.GdipSetPenLineJoin(self.band, 2)
+
+        # The card: a rounded rectangle, its edge drawn half a pen inside it.
+        self.card = ctypes.c_void_p()
+        gdiplus.GdipCreatePath(0, ctypes.byref(self.card))
+        inset = self.scale / 2
+        corner = 2 * self.RADIUS * self.scale
+        far_x, far_y = width - inset - corner, height - inset - corner
+        for x, y, start in ((inset, inset, 180), (far_x, inset, 270),
+                            (far_x, far_y, 0), (inset, far_y, 90)):
+            gdiplus.GdipAddPathArc(self.card, *(ctypes.c_float(value) for value in
+                                                (x, y, corner, corner, start, 90)))
+        gdiplus.GdipClosePathFigure(self.card)
+
+        self.title = self.font("Segoe UI", 17)
+        self.status = self.font("Consolas", 12)
+        self.centred = ctypes.c_void_p()
+        gdiplus.GdipCreateStringFormat(0, 0, ctypes.byref(self.centred))
+        gdiplus.GdipSetStringFormatAlign(self.centred, 1)
+        gdiplus.GdipSetStringFormatLineAlign(self.centred, 1)
+
+        # The dots, each as bright as the page's drifting ones and fading out
+        # towards the middle, so the mark stands clear of them.
+        self.dots = []
+        for y in range(12, self.HEIGHT - 8, self.PITCH):
+            for x in range(12, self.WIDTH - 8, self.PITCH):
+                away = min(1.0, math.hypot((x - self.WIDTH / 2) / (self.WIDTH * 0.4),
+                                           (y - self.HEIGHT / 2) / (self.HEIGHT * 0.5)))
+                self.dots.append((x, y, argb((0.14 + 0.20 * random.random()) * away, CHALK)))
+
+    def font(self, family, size):
+        gdiplus = ctypes.windll.gdiplus
+        found, made = ctypes.c_void_p(), ctypes.c_void_p()
+        gdiplus.GdipCreateFontFamilyFromName(family, None, ctypes.byref(found))
+        gdiplus.GdipCreateFont(found, ctypes.c_float(size * self.scale), 0, 2,  # in pixels
+                               ctypes.byref(made))
+        return made
+
+    def draw(self, now, opacity):
+        gdiplus, graphics, scale = ctypes.windll.gdiplus, self.graphics, self.scale
+        gdiplus.GdipGraphicsClear(graphics, 0)
+        gdiplus.GdipSetSolidFillColor(self.brush, argb(1, CARBON))
+        gdiplus.GdipFillPath(graphics, self.brush, self.card)
+        gdiplus.GdipDrawPath(graphics, self.edge, self.card)
+
+        radius = 1.2 * scale
+        for x, y, colour in self.dots:
+            lift = self.CREST * math.sin(2 * math.pi * ((x + y * 0.5) / self.WAVE - now / self.PERIOD))
+            gdiplus.GdipSetSolidFillColor(self.brush, colour)
+            gdiplus.GdipFillEllipse(graphics, self.brush,
+                                    ctypes.c_float(x * scale - radius),
+                                    ctypes.c_float((y + lift) * scale - radius),
+                                    ctypes.c_float(2 * radius), ctypes.c_float(2 * radius))
+
+        # The mark's three bands, a wave and a half long and a band apart, as
+        # in the exe's icon - but with the wave moving along them.
+        for base, colour in ((10.5, CHALK), (16, GOLD), (21.5, CHALK)):
+            points = []
+            for unit in range(0, 25, 2):
+                rise = 1.4 * math.sin(2 * math.pi * (unit / 16 - now / self.FLOW))
+                points += [(self.WIDTH / 2 + (unit - 12) * self.MARK) * scale,
+                           (78 + (base - 16 - rise) * self.MARK) * scale]
+            gdiplus.GdipSetPenColor(self.band, argb(1, colour))
+            gdiplus.GdipDrawCurve(graphics, self.band, floats(*points), len(points) // 2)
+
+        for text, font, colour, middle in (("SilkFrame", self.title, CHALK, 134),
+                                           ("STARTING", self.status, SMOKE, 158)):
+            gdiplus.GdipSetSolidFillColor(self.brush, argb(1, colour))
+            gdiplus.GdipDrawString(graphics, text, -1, font,
+                                   floats(0, (middle - 12) * scale, self.size.cx, 24 * scale),
+                                   self.centred, self.brush)
+
+        blend = BLENDFUNCTION(0, 0, round(255 * opacity), 1)  # over, with per-pixel alpha
+        ctypes.windll.user32.UpdateLayeredWindow(
+            self.window, None, None, ctypes.byref(self.size), self.dc,
+            ctypes.byref(wintypes.POINT()), 0, ctypes.byref(blend), 2)
+
+    def run(self):
+        user32 = ctypes.windll.user32
+        started = time.perf_counter()
+        shown = leaving = None
+        self.draw(0, 1)
+        user32.ShowWindow(self.window, 5)
+        # Taking the foreground is what lets the app this started bring its own
+        # window to the front when it shows it.
+        user32.SetForegroundWindow(self.window)
+        message = wintypes.MSG()
+        while True:
+            while user32.PeekMessageW(ctypes.byref(message), None, 0, 0, 1):
+                user32.DispatchMessageW(ctypes.byref(message))
+            now = time.perf_counter() - started
+            if leaving is None:
+                # Up for a moment is not up: pywebview shows the window briefly
+                # while it sets it up hidden, long before there is a page in it.
+                if not window_shown(self.app.pid):
+                    shown = None
+                elif shown is None:
+                    shown = now
+                if ((shown is not None and now - shown >= self.SETTLED)
+                        or self.app.poll() is not None or now > self.PATIENCE):
+                    leaving = now
+            opacity = 1 if leaving is None else 1 - (now - leaving) / self.FADE
+            if opacity <= 0:
+                break
+            self.draw(now, opacity)
+            time.sleep(self.FRAME)
+        user32.DestroyWindow(self.window)
+
+
 class Setup:
     """A small window that runs the install and then starts the app."""
 
     def __init__(self):
+        # Imported here rather than at the top: the shortcuts run this file on
+        # SilkFrame's own python, which has no tkinter, and only to launch.
+        import tkinter as tk
+        from tkinter import ttk
+
         self.updates = queue.Queue()
+        self.finished = False
         self.root = tk.Tk()
         self.root.title(f"SilkFrame {__version__} setup")
         self.root.resizable(False, False)
@@ -497,7 +762,7 @@ class Setup:
                     self.bar.stop()
                     self.bar.configure(mode="determinate", value=value * 1000)
             elif kind == "done":
-                launch()
+                self.finished = True  # main() starts the app, behind the splash
                 self.root.destroy()
                 return
             elif kind == "failed":
@@ -522,6 +787,9 @@ class Uninstaller:
     """
 
     def __init__(self):
+        import tkinter as tk  # see Setup
+        from tkinter import ttk
+
         self.updates = queue.Queue()
         self.targets = [path for path in (HOME, LEGACY_CACHE) if path.exists()]
         self.root = tk.Tk()
@@ -630,9 +898,12 @@ def main():
             add_shortcuts()  # a launcher carrying this release, not the one it replaced
             register()  # a fresh uninstall.exe, and the new version in Settings
             MARKER.write_text(json.dumps({**record, "version": __version__}), encoding="utf-8")
-        launch()
+        Splash(launch()).run()
         return
-    Setup().run()
+    setup = Setup()
+    setup.run()
+    if setup.finished:
+        Splash(launch()).run()
 
 
 if __name__ == "__main__":
